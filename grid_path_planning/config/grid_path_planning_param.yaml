@@ -1,0 +1,11 @@
+grid_path_planning_node:
+  ros__parameters:
+    grid_path_planning:
+      topic_name:
+        estimate_pose: "grid_path_planning/estimate_pose"
+        estimate_twist: "grid_path_planning/estimate_twist"
+      tf_frame:
+        map_frame: "map"
+        odom_frame: "odom"
+        robot_frame: "base_link"
+      broadcast_period: 0.001
