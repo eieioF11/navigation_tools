@@ -22,6 +22,9 @@
 // other
 #include "common_lib/common_lib.hpp"
 
+#include "common_lib/planner/a_star.hpp"
+#include "common_lib/planner/wave_propagation.hpp"
+
 #define _ENABLE_ATOMIC_ALIGNMENT_FIX
 //******************************************************************************
 // for文の実行方法設定
