@@ -16,12 +16,9 @@
 #include <laser_geometry/laser_geometry.hpp>
 
 #include "extension_node/extension_node.hpp"
-#include "common_lib/ros2_utility/ros_pcl_util.hpp"
 #include "common_lib/ros2_utility/msg_util.hpp"
 #include "common_lib/ros2_utility/tf_util.hpp"
 // #include "common_lib/ros2_utility/marker_util.hpp"
-// PCL
-#include "common_lib/pcl_utility/pcl_util.hpp"
 // other
 #include "common_lib/common_lib.hpp"
 
@@ -55,8 +52,8 @@ public:
 		// robotパラメータ
 		MIN_VEL = param<double>("grid_path_planning.robot.min_velocity", 0.01);
 		MIN_ANGULAR = param<double>("grid_path_planning.robot.min_angular", 0.01);
-		gpo_param.max_velocity = param<double>("grid_path_planning.robot.max_velocity", 5.0);
-		gpo_param.max_angular = param<double>("grid_path_planning.robot.max_angular", 5.0);
+		// gpo_param.max_velocity = param<double>("grid_path_planning.robot.max_velocity", 5.0);
+		// gpo_param.max_angular = param<double>("grid_path_planning.robot.max_angular", 5.0);
 		// init
 		initialization_ = true;
 		// publisher

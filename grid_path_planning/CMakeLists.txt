@@ -9,7 +9,7 @@ add_compile_options(-O3)
 
 extension_ament_create_node(${PROJECT_NAME}_component
   NODE_NAME ${PROJECT_NAME}
-  NODE_PLUGIN "GridPointObserverNode"
+  NODE_PLUGIN "GridPathPlanning"
 )
 target_link_libraries(${PROJECT_NAME}_component
   tbb
