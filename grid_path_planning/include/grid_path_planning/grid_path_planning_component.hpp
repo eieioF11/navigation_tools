@@ -59,6 +59,8 @@ public:
 		// gpo_param.max_angular = param<double>("grid_path_planning.robot.max_angular", 5.0);
 		// init
 		initialization_ = true;
+		planner_ = std::make_shared<WavePropagation>();
+		// planner_ = std::make_shared<AStar>();
 		// publisher
 		// estimate_pose_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>(ESTIMATE_POSE_TOPIC, rclcpp::QoS(10).best_effort());
 		// estimate_twist_pub_ = this->create_publisher<geometry_msgs::msg::TwistStamped>(ESTIMATE_TWIST_TOPIC, rclcpp::QoS(10).best_effort());
@@ -112,4 +114,6 @@ private:
 	// vel
 	Twistd odom_twist_;
 	Twistd estimate_twist_;
+	// planner
+	std::shared_ptr<GridPathPlanner> planner_;
 };
