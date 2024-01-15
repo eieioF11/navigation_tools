@@ -6,8 +6,27 @@ mpc_path_planning_node:
         target: "/goal_pose"
         grid_path: "mpc_path_planning/grid_path"
         opti_path: "mpc_path_planning/opti_path"
+        cmd_vel: "/cmd_vel"
       tf_frame:
         map_frame: "map"
         odom_frame: "odom"
         robot_frame: "base_link"
       control_period: 0.001
+      mpc:
+        dt: 0.06
+        horizon_time: 7.0
+        max_vel: 1.0
+        max_angular: 1.0
+        max_acc: 0.98
+        max_angular_acc: 1.0
+        weight:
+          state: [1.0, 1.0, 6.0, 200.0, 200.0, 60.0]
+          final_state: [1.0, 1.0, 6.0, 200.0, 200.0, 60.0]
+          control: [2.0, 2.0, 2.0]
+        ipopt:
+          sb: "yes" # コンソールにヘッダを出力しない
+          linear_solver: "numps" # numpsは遅い ma27はHSLライブラリ必要
+          max_iter: 500
+          acceptable_tol: 0.000001
+          compl_inf_tol: 0.0001
+        grid_path_planner: "a_star"
