@@ -15,7 +15,7 @@ def generate_launch_description():
         executable='rviz2',
         arguments=['-d', rviz_config_file],
     )
-    base_link_to_imu_link_node = launch_ros.actions.Node(
+    map_to_base_link_node = launch_ros.actions.Node(
             package="tf2_ros",
             executable="static_transform_publisher",
             arguments=[
@@ -32,9 +32,9 @@ def generate_launch_description():
                 "--roll",
                 "0.0",
                 "--frame-id",
-                "base_link",
+                "map",
                 "--child-frame-id",
-                "/imu_link",
+                "base_link",
             ],
     )
     grid_path_planning_node = launch_ros.actions.Node(
@@ -46,5 +46,7 @@ def generate_launch_description():
         respawn=True,
     )
     return launch.LaunchDescription(
-        [grid_path_planning_node, rviz2_node]
+        # [ map_to_base_link_node]
+        # [ grid_path_planning_node, rviz2_node]
+        [ grid_path_planning_node]
     )
