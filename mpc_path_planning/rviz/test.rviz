@@ -179,6 +179,31 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /mpc_path_planning/opti_path
       Value: true
+    - Class: jsk_rviz_plugin/PieChart
+      Enabled: true
+      Name: opti_path[ms]
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /mpc_path_planning/solve_time
+      Value: true
+      auto color change: false
+      background color: 0; 0; 0
+      backround alpha: 0
+      clockwise rotate direction: false
+      foreground alpha: 0.699999988079071
+      foreground alpha 2: 0.4000000059604645
+      foreground color: 25; 255; 240
+      left: 10
+      max color: 255; 0; 0
+      max value: 1
+      min value: 0
+      show caption: true
+      size: 128
+      text size: 14
+      top: 10
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48

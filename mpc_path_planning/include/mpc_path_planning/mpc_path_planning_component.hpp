@@ -11,6 +11,7 @@
 #include <Eigen/Dense>
 #include <Eigen/Eigenvalues>
 // ROS
+#include <std_msgs/msg/float32.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <nav_msgs/msg/path.hpp>
@@ -109,8 +110,7 @@ public:
       return {
         {"ipopt.sb", IPOPT_SB.c_str()},  // コンソールにヘッダを出力しない
         // {"ipopt.linear_solver", "ma27"}, // numpsは遅い ma27はHSLライブラリ必要
-        // {"ipopt.linear_solver",
-        //  IPOPT_LINEAR_SOLVER.c_str()},  // numpsは遅い ma27はHSLライブラリ必要
+        {"ipopt.linear_solver", IPOPT_LINEAR_SOLVER.c_str()},  // numpsは遅い ma27はHSLライブラリ必要
         {"ipopt.max_iter", IPOPT_MAX_ITER},
         {"ipopt.acceptable_tol", IPOPT_ACCEPTABLE_TOL},
         {"ipopt.compl_inf_tol", IPOPT_COMPL_INF_TOL},
@@ -153,6 +153,7 @@ public:
     opti_path_pub_ = this->create_publisher<nav_msgs::msg::Path>(OPTIPATH_TOPIC, rclcpp::QoS(10));
     cmd_vel_pub_ =
       this->create_publisher<geometry_msgs::msg::Twist>(CMD_VEL_TOPIC, rclcpp::QoS(10));
+    perfomance_pub_ = this->create_publisher<std_msgs::msg::Float32>("mpc_path_planning/solve_time", rclcpp::QoS(5));
     // subscriber
     map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
       MAP_TOPIC, rclcpp::QoS(10).reliable(),
@@ -212,6 +213,10 @@ public:
               auto [o_ppath, o_vpath, o_apath] =
                 make_nav_path(make_header(MAP_FRAME, rclcpp::Clock().now()), opti_path_.value());
               opti_path_pub_->publish(o_ppath);
+              //debug
+              std_msgs::msg::Float32 time_msg;
+              time_msg.data = planner_->solve_time_ * 1000;
+              perfomance_pub_->publish(time_msg);
             }
           }
         }
@@ -333,6 +338,7 @@ private:
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr grid_path_pub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr opti_path_pub_;
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr perfomance_pub_;
   // twist
   Twistd now_vel_;
   // pose

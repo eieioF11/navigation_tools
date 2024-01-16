@@ -53,6 +53,7 @@ def generate_launch_description():
         name='map_server',
         namespace='',
         output="screen",
+        respawn_delay=2.0,
         parameters=[{
             "yaml_filename": map_file
         }],
@@ -69,5 +70,5 @@ def generate_launch_description():
     )
     return launch.LaunchDescription(
         # [lifecycle_manager_node,map_server_node,mpc_path_planning_node,rviz2_node]
-        [ map_to_base_link_node,mpc_path_planning_node,rviz2_node, lifecycle_manager_node,map_server_node]
+        [ rviz2_node, map_to_base_link_node, mpc_path_planning_node, lifecycle_manager_node, map_server_node]
     )

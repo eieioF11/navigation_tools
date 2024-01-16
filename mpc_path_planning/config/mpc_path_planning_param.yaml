@@ -12,7 +12,7 @@ mpc_path_planning_node:
         odom_frame: "odom"
         robot_frame: "base_link"
       planning_period: 0.001 #[s]
-      control_period:  0.005 #[s]
+      control_period: 0.005 #[s]
       goal:
         pos_range: 0.05
         angle_range: 1.0
@@ -31,9 +31,9 @@ mpc_path_planning_node:
           control: [2.0, 0.0, 2.0]
         ipopt:
           sb: "yes" # コンソールにヘッダを出力しない
-          linear_solver: "numps" # numpsは遅い ma27はHSLライブラリ必要
+          # linear_solver: "numps" # numpsは遅い ma27はHSLライブラリ必要 (numps:40msくらい,ma27:10msくらい)
+          linear_solver: "ma27" # numpsは遅い ma27はHSLライブラリ必要 (numps:40msくらい,ma27:10msくらい)
           max_iter: 500
           acceptable_tol: 0.000001
           compl_inf_tol: 0.0001
         grid_path_planner: "a_star"
-
