@@ -24,6 +24,9 @@
   <depend>eigen</depend>
   <depend>tbb</depend>
 
+  <depend>cv_bridge</depend>
+  <depend>OpenCV</depend>
+
   <depend>common_lib</depend>
   <depend>extension_node</depend>
 

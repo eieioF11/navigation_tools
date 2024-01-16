@@ -84,7 +84,7 @@ public:
           this->get_logger(), "%s %s can not Transform", MAP_FRAME.c_str(), ROBOT_FRAME.c_str());
         return;
       }
-      auto map_to_base_link = lookup_transform(tf_buffer_, MAP_FRAME, ROBOT_FRAME);
+      auto map_to_base_link = lookup_transform(tf_buffer_, ROBOT_FRAME, MAP_FRAME);
       if (map_to_base_link) {
         base_link_pose_ = make_pose(map_to_base_link.value().transform);
         RCLCPP_INFO_CHANGE(0, this->get_logger(), "get base_link pose");
@@ -152,6 +152,7 @@ private:
     PathPointd p;
     p.pose.position.x = v.x;
     p.pose.position.y = v.y;
+    p.pose.position.z = 0.0;
     return p;
   }
 };
