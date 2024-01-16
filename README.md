@@ -2,7 +2,7 @@
 ナビゲーション勉強用
 ## パッケージリスト
 - grid path planner (a* and wave propagation)
+- mpc path planner (開発途中)
 ## todo
 追加予定パッケージリスト
-- mpc path planner
 - pid path follower
