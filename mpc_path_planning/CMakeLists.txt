@@ -16,7 +16,7 @@ target_link_libraries(${PROJECT_NAME}_component
 )
 
 install(
-  DIRECTORY  launch config
+  DIRECTORY  launch config map rviz
   DESTINATION share/${PROJECT_NAME}/
 )
 

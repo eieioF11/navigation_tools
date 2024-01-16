@@ -1,0 +1,6 @@
+image: map.pgm
+resolution: 0.0244
+origin: [-0.05, -0.05, 0] #マップの左下端の座標(x,y,θ)
+negate: 0                 #白黒反転させるかどうか
+occupied_thresh: 0.65     #この数値より大きいところを障害物とみなす
+free_thresh: 0.25         #この数値より小さいところをフリースペースとみなす
