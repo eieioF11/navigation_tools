@@ -31,8 +31,8 @@ mpc_path_planning_node:
           control: [2.0, 0.0, 2.0]
         ipopt:
           sb: "yes" # コンソールにヘッダを出力しない
-          # linear_solver: "numps" # numpsは遅い ma27はHSLライブラリ必要 (numps:40msくらい,ma27:10msくらい)
-          linear_solver: "ma27" # numpsは遅い ma27はHSLライブラリ必要 (numps:40msくらい,ma27:10msくらい)
+          linear_solver: "mumps" # mumpsは遅い ma27はHSLライブラリ必要 (mumps:40msくらい,ma27:10msくらい)
+          # linear_solver: "ma27" # mumpsは遅い ma27はHSLライブラリ必要 (mumps:40msくらい,ma27:10msくらい)
           max_iter: 500
           acceptable_tol: 0.000001
           compl_inf_tol: 0.0001

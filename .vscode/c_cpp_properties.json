@@ -1,0 +1,35 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${default}",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/home/nishizawa/aist_intern2023_ros2_ws/install/unitree_udp_sender/include/**",
+        "/home/nishizawa/aist_intern2023_ros2_ws/install/unitree_legged_sdk/include/**",
+        "/home/nishizawa/aist_intern2023_ros2_ws/install/ros2_unitree_legged_msgs/include/**",
+        "/home/nishizawa/aist_intern2023_ros2_ws/install/mpc_path_planning/include/**",
+        "/home/nishizawa/aist_intern2023_ros2_ws/install/grid_path_planning/include/**",
+        "/home/nishizawa/aist_intern2023_ros2_ws/install/grid_map_publisher/include/**",
+        "/home/nishizawa/aist_intern2023_ros2_ws/install/extension_node/include/**",
+        "/home/nishizawa/aist_intern2023_ros2_ws/install/common_lib/include/**",
+        "/opt/ros/humble/include/**",
+        "/home/nishizawa/aist_intern2023_ros2_ws/ext/ros2_common_tools/common_lib/include/**",
+        "/home/nishizawa/aist_intern2023_ros2_ws/ext/ros2_common_tools/extension_node/include/**",
+        "/home/nishizawa/aist_intern2023_ros2_ws/ext/unitree_legged_sdk/include/**",
+        "/home/nishizawa/aist_intern2023_ros2_ws/ext/unitree_ros2_to_real/include/**",
+        "/home/nishizawa/aist_intern2023_ros2_ws/src/navigation_tools/grid_map_publisher/include/**",
+        "/home/nishizawa/aist_intern2023_ros2_ws/src/navigation_tools/grid_path_planning/include/**",
+        "/home/nishizawa/aist_intern2023_ros2_ws/src/navigation_tools/mpc_path_planning/include/**",
+        "/usr/include/**"
+      ],
+      "name": "ROS",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++14"
+    }
+  ],
+  "version": 4
+}

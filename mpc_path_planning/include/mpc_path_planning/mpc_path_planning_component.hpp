@@ -101,7 +101,7 @@ public:
       mpc_config_.dt / (mpc_config_.dt + mpc_config_.theta_vel_time_constant);
     std::string IPOPT_SB = param<std::string>("mpc_path_planning.mpc.ipopt.sb", "yes");
     std::string IPOPT_LINEAR_SOLVER = param<std::string>(
-      "mpc_path_planning.mpc.ipopt.linear_solver", "numps");  // numpsは遅い ma27はHSLライブラリ必要
+      "mpc_path_planning.mpc.ipopt.linear_solver", "mumps");  // mumpsは遅い ma27はHSLライブラリ必要
     int IPOPT_MAX_ITER = param<int>("mpc_path_planning.mpc.ipopt.max_iter", 500);
     double IPOPT_ACCEPTABLE_TOL =
       param<double>("mpc_path_planning.mpc.ipopt.acceptable_tol", 0.000001);
@@ -109,8 +109,8 @@ public:
     auto solver_option = [&]() -> casadi::Dict {
       return {
         {"ipopt.sb", IPOPT_SB.c_str()},  // コンソールにヘッダを出力しない
-        // {"ipopt.linear_solver", "ma27"}, // numpsは遅い ma27はHSLライブラリ必要
-        {"ipopt.linear_solver", IPOPT_LINEAR_SOLVER.c_str()},  // numpsは遅い ma27はHSLライブラリ必要
+        // {"ipopt.linear_solver", "ma27"}, // mumpsは遅い ma27はHSLライブラリ必要
+        {"ipopt.linear_solver", IPOPT_LINEAR_SOLVER.c_str()},  // mumpsは遅い ma27はHSLライブラリ必要
         {"ipopt.max_iter", IPOPT_MAX_ITER},
         {"ipopt.acceptable_tol", IPOPT_ACCEPTABLE_TOL},
         {"ipopt.compl_inf_tol", IPOPT_COMPL_INF_TOL},
