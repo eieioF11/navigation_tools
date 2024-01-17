@@ -498,17 +498,17 @@ private:
     using namespace casadi;
     using Sl = casadi::Slice;
 
-    const double robot_colision_size = 0.8;
-    const double fence_width = 0.05;
+    const double robot_colision_size = 0.75;
 
-    for (size_t i = 1; i < X.size2(); i++) {
+    for (size_t i = 1; i < X.size2(); i++) {//get_guard_circle_subject(const casadi::MX &xy, const casadi::MX &center, const casadi::MX &size, std::string comp)
       // test
-      opti.subject_to(get_guard_rect_subject_approx(
+      opti.subject_to(get_guard_circle_subject(
         X(Sl(3, 5), i), MX::vertcat({-1.15, 0.0}),
-        MX::vertcat({0.05 + robot_colision_size, 0.05 + robot_colision_size}), 10,
+        MX::vertcat({0.05 + robot_colision_size, 0.05 + robot_colision_size}),
         "keep out"));
     }
 
+    // const double fence_width = 0.05;
     // // シーカー
     // for (size_t i = 1; i < X.size2(); i++) {
     //   // フィールド・ラゴリエリア内にいる制約

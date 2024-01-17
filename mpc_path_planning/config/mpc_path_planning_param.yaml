@@ -22,13 +22,13 @@ mpc_path_planning_node:
         dt: 0.1 # 0.135
         horizon_time: 5.0
         max_vel: 1.0
-        max_angular: 3.0
+        max_angular: 2.0
         max_acc: 3.924 # 0.98
         max_angular_acc: 4.9 #1.0
         weight:
-          state: [1.0, 0.0, 1.0, 200.0, 200.0, 50.0]
-          final_state: [1.0, 0.0, 1.0, 200.0, 200.0, 100.0]
-          control: [2.0, 0.0, 2.0]
+          state: [1.0, 0.0, 1.0, 200.0, 200.0, 100.0]
+          final_state: [0.0, 0.0, 0.0, 200.0, 200.0, 100.0]
+          control: [2.0, 0.0, 3.0]
         ipopt:
           sb: "yes" # コンソールにヘッダを出力しない
           # linear_solver: "mumps" # mumpsは遅い ma27はHSLライブラリ必要 (mumps:40msくらい,ma27:10msくらい)
