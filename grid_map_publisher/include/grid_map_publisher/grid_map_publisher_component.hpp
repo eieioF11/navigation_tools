@@ -6,7 +6,6 @@
 #include <tf2_ros/transform_broadcaster.h>
 #include <tf2_ros/transform_listener.h>
 
-#include <Eigen/Dense>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <optional>
 #include <rclcpp/rclcpp.hpp>
@@ -41,16 +40,13 @@ public:
     }
 
     using namespace std::chrono_literals;
-    timer_ = this->create_wall_timer(10ms, [&]() {
+    timer_ = this->create_wall_timer(50ms, [&]() {
       if (!map_loader_.exist_map_data()) {
         return;
       }
       map_pub_->publish(*base_gmap_);
     });
   }
-
-private:
-  using Vec3 = Eigen::Vector3d;
 
 private:
   MapLoader map_loader_;

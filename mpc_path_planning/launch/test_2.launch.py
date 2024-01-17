@@ -22,7 +22,7 @@ def generate_launch_description():
             executable="static_transform_publisher",
             arguments=[
                 "--x",
-                "-2.0",
+                "0.0",
                 "--y",
                 "0.0",
                 "--z",
@@ -47,18 +47,28 @@ def generate_launch_description():
         parameters=[os.path.join(share_dir, "config", "mpc_path_planning_param.yaml")],
         respawn=True,
     )
-    grid_map_publisher_node = launch_ros.actions.Node(
-        package="grid_map_publisher",
-        executable="grid_map_publisher",
-        parameters=[
-            {
-                "map_yaml_filename": os.path.join(
-                    get_package_share_directory("grid_map_publisher"), "map", "map.yaml"
-                )
-            }
-        ],
+    map_server_node= launch_ros.actions.Node(
+        package='nav2_map_server',
+        executable='map_server',
+        name='map_server',
+        namespace='',
+        output="screen",
+        respawn_delay=2.0,
+        parameters=[{
+            "yaml_filename": map_file
+        }],
+        respawn=True,
+    )
+    lifecycle_manager_node= launch_ros.actions.Node(
+        package='nav2_lifecycle_manager',
+        executable='lifecycle_manager',
+        name='lifecycle_manager_localization',
+        namespace='',
+        output="screen",
+        parameters=[{'autostart': True}, {'node_names': ['map_server']}],
         respawn=True,
     )
     return launch.LaunchDescription(
-        [ rviz2_node, map_to_base_link_node, mpc_path_planning_node, grid_map_publisher_node]
+        # [lifecycle_manager_node,map_server_node,mpc_path_planning_node,rviz2_node]
+        [ rviz2_node, map_to_base_link_node, mpc_path_planning_node, lifecycle_manager_node, map_server_node]
     )
