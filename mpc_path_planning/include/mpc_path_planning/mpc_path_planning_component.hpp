@@ -21,6 +21,7 @@
 
 #include "common_lib/ros2_utility/msg_util.hpp"
 #include "common_lib/ros2_utility/tf_util.hpp"
+#include "common_lib/ros2_utility/extension_msgs_util.hpp"
 #include "cv_bridge/cv_bridge.h"
 #include "extension_node/extension_node.hpp"
 // #include "common_lib/ros2_utility/marker_util.hpp"
@@ -233,14 +234,12 @@ public:
             Pathd opti_path = planner_->pathplanning(start, end);
             Pathd grid_path = planner_->get_grid_path();
             // publish grid path
-            auto [g_ppath, g_vpath, g_apath] =
-              make_nav_path(make_header(MAP_FRAME, rclcpp::Clock().now()), grid_path);
-            grid_path_pub_->publish(g_ppath);
+            grid_path_pub_->publish(make_nav_path(make_header(MAP_FRAME, rclcpp::Clock().now()), grid_path));
             if (planner_->optimization()) {  //最適化成功
               opti_path_ = opti_path;        //最適経路更新
               // publish opti path
               auto [o_ppath, o_vpath, o_apath] =
-                make_nav_path(make_header(MAP_FRAME, rclcpp::Clock().now()), opti_path_.value());
+                make_msg_paths(make_header(MAP_FRAME, rclcpp::Clock().now()), opti_path_.value());
               opti_path_pub_->publish(o_ppath);
               //debug
               std_msgs::msg::Float32 time_msg;

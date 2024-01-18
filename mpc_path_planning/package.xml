@@ -20,6 +20,8 @@
   <depend>nav_msgs</depend>
   <depend>jsk_rviz_plugin_msgs</depend>
 
+  <depend>extension_msgs</depend>
+
   <depend>casadi_ament</depend>
   <depend>eigen</depend>
   <depend>tbb</depend>

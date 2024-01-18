@@ -100,9 +100,7 @@ public:
             end.pose = target_pose_.value();
             Pathd grid_path = planner_->pathplanning(start, end);
             std::cout << grid_path << std::endl;
-            auto [ppath, vpath, apath] =
-              make_nav_path(make_header(MAP_FRAME, rclcpp::Clock().now()), grid_path);
-            grid_path_pub_->publish(ppath);
+            grid_path_pub_->publish(make_nav_path(make_header(MAP_FRAME, rclcpp::Clock().now()), grid_path));
             target_pose_ = std::nullopt;
           }
         }
