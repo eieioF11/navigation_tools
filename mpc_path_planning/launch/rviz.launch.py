@@ -16,16 +16,6 @@ def generate_launch_description():
         executable='rviz2',
         arguments=['-d', rviz_config_file],
     )
-    mpc_path_planning_node = launch_ros.actions.Node(
-        package='mpc_path_planning',
-        executable='mpc_path_planning',
-        namespace='',
-        output="screen",
-        parameters=[os.path.join(share_dir, "config", "mpc_path_planning_param.yaml")],
-        respawn=True,
-    )
     return launch.LaunchDescription(
-        # [lifecycle_manager_node,map_server_node,mpc_path_planning_node,rviz2_node]
-        [mpc_path_planning_node]
-        # [ rviz2_node, mpc_path_planning_node]
+        [rviz2_node]
     )

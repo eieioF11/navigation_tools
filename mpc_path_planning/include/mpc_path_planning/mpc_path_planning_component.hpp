@@ -30,6 +30,8 @@
 #define PLANNER_DEBUG_OUTPUT
 // grid path planner
 #include "common_lib/planner/a_star.hpp"
+#include "common_lib/planner/extension_a_star.hpp"
+#include "common_lib/planner/dijkstra.hpp"
 #include "common_lib/planner/wave_propagation.hpp"
 // mpc
 #include "common_lib/planner/mpc_path_planner.hpp"
@@ -141,14 +143,22 @@ public:
     auto init_func = std::bind(&MPCPathPlanning::init_parameter, this);
     auto add_cost_func = std::bind(&MPCPathPlanning::add_cost_function, this, std::placeholders::_1,std::placeholders::_2,std::placeholders::_3);
     auto add_const = std::bind(&MPCPathPlanning::add_constraints, this, std::placeholders::_1,std::placeholders::_2,std::placeholders::_3);
-    planner_->set_user_function(init_func,add_cost_func,add_const);
+    // planner_->set_user_function(init_func,add_cost_func,add_const);
     // 最適化時間計測用
     planner_->timer = [&]() { return now().seconds(); };
     // グリッドパスプランニング設定
     if (GRID_PATH_PLANNING.compare("wave_propagation") == 0)
       planner_->set_grid_path_planner(std::make_shared<WavePropagation>());
+    else if (GRID_PATH_PLANNING.compare("wave_propagation_dist_map") == 0)
+      planner_->set_grid_path_planner(std::make_shared<WavePropagation>(true));
     else if (GRID_PATH_PLANNING.compare("a_star") == 0)
       planner_->set_grid_path_planner(std::make_shared<AStar>());
+    else if (GRID_PATH_PLANNING.compare("extension_a_star") == 0)
+      planner_->set_grid_path_planner(std::make_shared<ExtensionAStar>());
+    else if (GRID_PATH_PLANNING.compare("dijkstra") == 0)
+      planner_->set_grid_path_planner(std::make_shared<Dijkstra>());
+    else if (GRID_PATH_PLANNING.compare("dijkstra_dist_map") == 0)
+      planner_->set_grid_path_planner(std::make_shared<Dijkstra>(true));
     else
       RCLCPP_WARN(this->get_logger(), "grid path planning not used");
     RCLCPP_INFO(this->get_logger(), "grid path planning: %s", GRID_PATH_PLANNING.c_str());
@@ -207,8 +217,7 @@ public:
         // 経路計算
         if (map_msg_) {
           calc_distance_map();
-          planner_->set_map(make_gridmap(*map_msg_));
-          // planner_->set_map(make_gridmap(dist_map_msg_));
+          planner_->set_map(make_gridmap(dist_map_msg_));
           RCLCPP_INFO_CHANGE(1, this->get_logger(), "get map");
           if (target_pose_) {
 #if defined(PLANNING_DEBUG_OUTPUT)
@@ -501,13 +510,13 @@ private:
 
     const double robot_colision_size = 0.75;
 
-    for (size_t i = 1; i < X.size2(); i++) {//get_guard_circle_subject(const casadi::MX &xy, const casadi::MX &center, const casadi::MX &size, std::string comp)
-      // test
-      opti.subject_to(get_guard_circle_subject(
-        X(Sl(3, 5), i), MX::vertcat({-1.15, 0.0}),
-        MX::vertcat({0.05 + robot_colision_size, 0.05 + robot_colision_size}),
-        "keep out"));
-    }
+    // for (size_t i = 1; i < X.size2(); i++) {//get_guard_circle_subject(const casadi::MX &xy, const casadi::MX &center, const casadi::MX &size, std::string comp)
+    //   // test
+    //   opti.subject_to(get_guard_circle_subject(
+    //     X(Sl(3, 5), i), MX::vertcat({-1.15, 0.0}),
+    //     MX::vertcat({0.05 + robot_colision_size, 0.05 + robot_colision_size}),
+    //     "keep out"));
+    // }
 
     // const double fence_width = 0.05;
     // // シーカー
