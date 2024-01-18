@@ -26,6 +26,7 @@ def generate_launch_description():
     )
     return launch.LaunchDescription(
         # [lifecycle_manager_node,map_server_node,mpc_path_planning_node,rviz2_node]
-        [mpc_path_planning_node]
-        # [ rviz2_node, mpc_path_planning_node]
+        # [mpc_path_planning_node]
+        # [ rviz2_node]
+        [ rviz2_node, mpc_path_planning_node]
     )

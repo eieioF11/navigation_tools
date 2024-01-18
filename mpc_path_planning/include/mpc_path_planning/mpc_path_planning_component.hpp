@@ -81,6 +81,7 @@ public:
     mpc_config_.dt = param<double>("mpc_path_planning.mpc.dt", 0.06);
     double HORIZON_TIME = param<double>("mpc_path_planning.mpc.horizon_time", 7.0);
     mpc_config_.horizon = static_cast<size_t>(HORIZON_TIME / mpc_config_.dt);
+    mpc_config_.pos_error = param<double>("mpc_path_planning.mpc.pos_error", 100.0);
     mpc_config_.max_vel = param<double>("mpc_path_planning.mpc.max_vel", 1.0);          // [m/s]
     mpc_config_.max_angular = param<double>("mpc_path_planning.mpc.max_angular", 1.0);  // [m/s]
     mpc_config_.max_acc = param<double>("mpc_path_planning.mpc.max_acc", 0.98);         // [m/s^2]
@@ -120,8 +121,8 @@ public:
         {"ipopt.print_level", 0},
         {"print_time", false},
         {"ipopt.warm_start_init_point", "yes"},
-        //{"ipopt.hessian_approximation", "limited-memory"},//使えてない
-        //{"ipopt.fixed_variable_treatment","make_constraint"},
+        // {"ipopt.hessian_approximation", "limited-memory"},//使えてない
+        {"ipopt.fixed_variable_treatment","make_constraint"},
         {"expand", true},
       };
     };
@@ -484,8 +485,8 @@ private:
     using namespace casadi;
     using Sl = casadi::Slice;
 
-    const double robot_colision_size = 0.8;
-    const double fence_width = 0.05;
+    // const double robot_colision_size = 0.8;
+    // const double fence_width = 0.05;
 
     // for(size_t i = 1; i < X.size2(); i++)
     // {
