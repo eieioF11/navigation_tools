@@ -11,7 +11,14 @@ extension_ament_create_node(${PROJECT_NAME}_component
   NODE_NAME ${PROJECT_NAME}
   NODE_PLUGIN "MPCPathPlanning"
 )
+extension_ament_create_node(control_component
+  NODE_NAME "control"
+  NODE_PLUGIN "Control"
+)
 target_link_libraries(${PROJECT_NAME}_component
+  tbb
+)
+target_link_libraries(control_component
   tbb
 )
 

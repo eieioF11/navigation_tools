@@ -10,12 +10,6 @@ from launch.substitutions import LaunchConfiguration, PythonExpression
 
 def generate_launch_description():
     share_dir = get_package_share_directory('mpc_path_planning')
-    rviz_config_file = os.path.join(share_dir, 'rviz','test.rviz')
-    rviz2_node = launch_ros.actions.Node(
-        package='rviz2',
-        executable='rviz2',
-        arguments=['-d', rviz_config_file],
-    )
     mpc_path_planning_node = launch_ros.actions.Node(
         package='mpc_path_planning',
         executable='mpc_path_planning',
@@ -24,8 +18,16 @@ def generate_launch_description():
         parameters=[os.path.join(share_dir, "config", "mpc_path_planning_param.yaml")],
         respawn=True,
     )
+
+    control_node = launch_ros.actions.Node(
+        package='mpc_path_planning',
+        executable='control',
+        namespace='',
+        output="screen",
+        parameters=[os.path.join(share_dir, "config", "mpc_path_planning_param.yaml")],
+        respawn=True,
+    )
+
     return launch.LaunchDescription(
-        # [lifecycle_manager_node,map_server_node,mpc_path_planning_node,rviz2_node]
-        [mpc_path_planning_node]
-        # [ rviz2_node, mpc_path_planning_node]
+        [mpc_path_planning_node ,control_node]
     )

@@ -6,6 +6,7 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
+        - /TF1/Frames1
       Splitter Ratio: 0.4882352948188782
     Tree Height: 1693
   - Class: rviz_common/Selection
@@ -25,7 +26,7 @@ Panels:
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: ""
+    SyncSource: LaserScan
 Visualization Manager:
   Class: ""
   Displays:
@@ -91,7 +92,7 @@ Visualization Manager:
       Value: true
     - Class: jsk_rviz_plugin/PieChart
       Enabled: true
-      Name: opti_path[ms]
+      Name: solve[ms]
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -114,6 +115,91 @@ Visualization Manager:
       size: 128
       text size: 14
       top: 10
+    - Buffer length: 100
+      Class: jsk_rviz_plugin/Plotter2D
+      Enabled: true
+      Name: solve[ms]
+      Show Value: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /mpc_path_planning/solve_time
+      Value: true
+      auto color change: false
+      auto scale: true
+      background color: 0; 0; 0
+      backround alpha: 0
+      border: true
+      foreground alpha: 0.699999988079071
+      foreground color: 25; 255; 240
+      height: 128
+      left: 190
+      linewidth: 1
+      max color: 255; 0; 0
+      max value: 1
+      min value: -1
+      show caption: true
+      text size: 12
+      top: 10
+      update interval: 0.03999999910593033
+      width: 128
+    - Class: jsk_rviz_plugin/PieChart
+      Enabled: true
+      Name: control[ms]
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /mpc_path_planning/control_time
+      Value: true
+      auto color change: false
+      background color: 0; 0; 0
+      backround alpha: 0
+      clockwise rotate direction: false
+      foreground alpha: 0.699999988079071
+      foreground alpha 2: 0.4000000059604645
+      foreground color: 25; 255; 240
+      left: 10
+      max color: 255; 0; 0
+      max value: 1
+      min value: 0
+      show caption: true
+      size: 128
+      text size: 14
+      top: 175
+    - Buffer length: 100
+      Class: jsk_rviz_plugin/Plotter2D
+      Enabled: true
+      Name: control[ms]
+      Show Value: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /mpc_path_planning/control_time
+      Value: true
+      auto color change: false
+      auto scale: true
+      background color: 0; 0; 0
+      backround alpha: 0
+      border: true
+      foreground alpha: 0.699999988079071
+      foreground color: 25; 255; 240
+      height: 128
+      left: 190
+      linewidth: 1
+      max color: 255; 0; 0
+      max value: 1
+      min value: -1
+      show caption: true
+      text size: 12
+      top: 175
+      update interval: 0.03999999910593033
+      width: 128
     - Alpha: 0.5
       Axes Length: 1
       Axes Radius: 0.10000000149011612
@@ -153,11 +239,33 @@ Visualization Manager:
       Enabled: true
       Frame Timeout: 15
       Frames:
-        All Enabled: true
+        All Enabled: false
+        base_footprint:
+          Value: true
         base_link:
           Value: true
+        base_scan:
+          Value: false
+        camera_link:
+          Value: false
+        camera_rgb_frame:
+          Value: false
+        camera_rgb_optical_frame:
+          Value: false
+        caster_back_left_link:
+          Value: false
+        caster_back_right_link:
+          Value: false
+        imu_link:
+          Value: false
         map:
           Value: true
+        odom:
+          Value: true
+        wheel_left_link:
+          Value: false
+        wheel_right_link:
+          Value: false
       Marker Scale: 1
       Name: TF
       Show Arrows: true
@@ -165,8 +273,25 @@ Visualization Manager:
       Show Names: false
       Tree:
         map:
-          base_link:
-            {}
+          odom:
+            base_footprint:
+              base_link:
+                base_scan:
+                  {}
+                camera_link:
+                  camera_rgb_frame:
+                    camera_rgb_optical_frame:
+                      {}
+                caster_back_left_link:
+                  {}
+                caster_back_right_link:
+                  {}
+                imu_link:
+                  {}
+                wheel_left_link:
+                  {}
+                wheel_right_link:
+                  {}
       Update Interval: 0
       Value: true
     - Alpha: 1
@@ -304,7 +429,7 @@ Visualization Manager:
   Value: true
   Views:
     Current:
-      Angle: 0
+      Angle: 1.7005950212478638e-06
       Class: rviz_default_plugins/TopDownOrtho
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
@@ -314,11 +439,11 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 335.5511474609375
+      Scale: 344.14923095703125
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz_default_plugins)
-      X: 0.362069696187973
-      Y: -0.03682619705796242
+      X: 0.3964235782623291
+      Y: 0.044000446796417236
     Saved: ~
 Window Geometry:
   Displays:

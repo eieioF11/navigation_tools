@@ -1,23 +1,31 @@
 import os
 import sys
 from glob import glob
-import launch
-import launch_ros.actions
-from ament_index_python.packages import get_package_share_directory
-from launch_ros.actions import ComposableNodeContainer
 from launch_ros.descriptions import ComposableNode
-from launch.substitutions import LaunchConfiguration, PythonExpression
+from launch_ros.actions import Node
+from launch_ros.actions import ComposableNodeContainer
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration
+from launch.actions import DeclareLaunchArgument
+from launch.actions import IncludeLaunchDescription
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+
 
 def generate_launch_description():
-    share_dir = get_package_share_directory('mpc_path_planning')
-    rviz_config_file = os.path.join(share_dir, 'rviz','test.rviz')
-    map_file = os.path.join(share_dir, 'map','map.yaml')
-    rviz2_node = launch_ros.actions.Node(
-        package='rviz2',
-        executable='rviz2',
-        arguments=['-d', rviz_config_file],
-    )
-    map_to_base_link_node = launch_ros.actions.Node(
+    pkg_dir = get_package_share_directory('mpc_path_planning')
+    list = [
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                [os.path.join(pkg_dir, "launch"), "/rviz.launch.py"]
+            ),
+        ),
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                [os.path.join(pkg_dir, "launch"), "/mpc.launch.py"]
+            ),
+        ),
+        Node(
             package="tf2_ros",
             executable="static_transform_publisher",
             arguments=[
@@ -38,27 +46,19 @@ def generate_launch_description():
                 "--child-frame-id",
                 "base_link",
             ],
-    )
-    mpc_path_planning_node = launch_ros.actions.Node(
-        package='mpc_path_planning',
-        executable='mpc_path_planning',
-        namespace='',
-        output="screen",
-        parameters=[os.path.join(share_dir, "config", "mpc_path_planning_param.yaml")],
-        respawn=True,
-    )
-    grid_map_publisher_node = launch_ros.actions.Node(
-        package="grid_map_publisher",
-        executable="grid_map_publisher",
-        parameters=[
-            {
-                "map_yaml_filename": os.path.join(
-                    get_package_share_directory("grid_map_publisher"), "map", "map.yaml"
-                )
-            }
-        ],
-        respawn=True,
-    )
-    return launch.LaunchDescription(
-        [ rviz2_node, map_to_base_link_node, mpc_path_planning_node, grid_map_publisher_node]
-    )
+        ),
+        Node(
+                package="grid_map_publisher",
+                executable="grid_map_publisher",
+                parameters=[
+                    {
+                        "map_yaml_filename": os.path.join(
+                            get_package_share_directory("grid_map_publisher"), "map", "map.yaml"
+                        )
+                    }
+                ],
+                respawn=True,
+        )
+    ]
+
+    return LaunchDescription(list)

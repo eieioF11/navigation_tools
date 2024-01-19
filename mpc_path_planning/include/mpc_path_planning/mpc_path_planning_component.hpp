@@ -15,13 +15,13 @@
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <nav_msgs/msg/path.hpp>
 #include <sensor_msgs/msg/image.hpp>
-#include <std_msgs/msg/float32.hpp>
+#include <std_msgs/msg/empty.hpp>
 // opencv
 #include <opencv2/opencv.hpp>
 
+#include "common_lib/ros2_utility/extension_msgs_util.hpp"
 #include "common_lib/ros2_utility/msg_util.hpp"
 #include "common_lib/ros2_utility/tf_util.hpp"
-#include "common_lib/ros2_utility/extension_msgs_util.hpp"
 #include "cv_bridge/cv_bridge.h"
 #include "extension_node/extension_node.hpp"
 // #include "common_lib/ros2_utility/marker_util.hpp"
@@ -31,8 +31,8 @@
 #define PLANNER_DEBUG_OUTPUT
 // grid path planner
 #include "common_lib/planner/a_star.hpp"
-#include "common_lib/planner/extension_a_star.hpp"
 #include "common_lib/planner/dijkstra.hpp"
+#include "common_lib/planner/extension_a_star.hpp"
 #include "common_lib/planner/wave_propagation.hpp"
 // mpc
 #include "common_lib/planner/mpc_path_planner.hpp"
@@ -41,8 +41,8 @@
 //******************************************************************************
 #define NON_HOLONOMIC
 // デバック関連設定
-// #define PLANNING_DEBUG_OUTPUT
-#define CONTROL_DEBUG_OUTPUT
+#define PLANNING_DEBUG_OUTPUT
+// #define CONTROL_DEBUG_OUTPUT
 //******************************************************************************
 using namespace common_lib;
 using namespace std::chrono_literals;
@@ -66,20 +66,13 @@ public:
       param<std::string>("mpc_path_planning.topic_name.grid_path", "mpc_path_planning/grid_path");
     std::string OPTIPATH_TOPIC =
       param<std::string>("mpc_path_planning.topic_name.opti_path", "mpc_path_planning/opti_path");
-    std::string CMD_VEL_TOPIC =
-      param<std::string>("mpc_path_planning.topic_name.cmd_vel", "/cmd_vel");
+    std::string OPTITWISTS_TOPIC =
+      param<std::string>("mpc_path_planning.topic_name.opti_twists", "mpc_path_planning/twists");
     // frame
     MAP_FRAME = param<std::string>("mpc_path_planning.tf_frame.map_frame", "map");
-    ODOM_FRAME = param<std::string>("mpc_path_planning.tf_frame.odom_frame", "odom");
     ROBOT_FRAME = param<std::string>("mpc_path_planning.tf_frame.robot_frame", "base_link");
     // setup
     PLANNING_PERIOD = param<double>("mpc_path_planning.planning_period", 0.001);
-    CONTROL_PERIOD = param<double>("mpc_path_planning.control_period", 0.001);
-    // 収束判定
-    GOAL_POS_RANGE = param<double>("mpc_path_planning.goal.pos_range", 0.01);
-    GOAL_ANGLE_RANGE = param<double>("mpc_path_planning.goal.angle_range", 0.1);
-    GOAL_MIN_VEL_RANGE = param<double>("mpc_path_planning.goal.min_vel_range", 0.001);
-    GOAL_MIN_ANGULAR_RANGE = param<double>("mpc_path_planning.goal.min_angular_range", 0.001);
     // mpc
     mpc_config_.dt = param<double>("mpc_path_planning.mpc.dt", 0.06);
     double HORIZON_TIME = param<double>("mpc_path_planning.mpc.horizon_time", 7.0);
@@ -125,7 +118,7 @@ public:
         {"print_time", false},
         {"ipopt.warm_start_init_point", "yes"},
         // {"ipopt.hessian_approximation", "limited-memory"},//使えてない
-        {"ipopt.fixed_variable_treatment","make_constraint"},
+        {"ipopt.fixed_variable_treatment", "make_constraint"},
         {"expand", true},
       };
     };
@@ -135,15 +128,18 @@ public:
       param<std::string>("mpc_path_planning.mpc.grid_path_planner", "a_star");
     // init
     RCLCPP_INFO(this->get_logger(), "Initialization !");
+    end_ = true;
     target_pose_ = std::nullopt;
-    opti_path_ = std::nullopt;
-    latest_planning_time_ = this->get_clock()->now();
-    latest_control_time_ = this->get_clock()->now();
+    pre_planning_time_ = this->get_clock()->now();
     planner_ = std::make_shared<MPCPathPlanner>(mpc_config_);
     // 追加の制約等設定
     auto init_func = std::bind(&MPCPathPlanning::init_parameter, this);
-    auto add_cost_func = std::bind(&MPCPathPlanning::add_cost_function, this, std::placeholders::_1,std::placeholders::_2,std::placeholders::_3);
-    auto add_const = std::bind(&MPCPathPlanning::add_constraints, this, std::placeholders::_1,std::placeholders::_2,std::placeholders::_3);
+    auto add_cost_func = std::bind(
+      &MPCPathPlanning::add_cost_function, this, std::placeholders::_1, std::placeholders::_2,
+      std::placeholders::_3);
+    auto add_const = std::bind(
+      &MPCPathPlanning::add_constraints, this, std::placeholders::_1, std::placeholders::_2,
+      std::placeholders::_3);
     // planner_->set_user_function(init_func,add_cost_func,add_const);
     // 最適化時間計測用
     planner_->timer = [&]() { return now().seconds(); };
@@ -173,8 +169,8 @@ public:
     // publisher
     grid_path_pub_ = this->create_publisher<nav_msgs::msg::Path>(GRIDPATH_TOPIC, rclcpp::QoS(10));
     opti_path_pub_ = this->create_publisher<nav_msgs::msg::Path>(OPTIPATH_TOPIC, rclcpp::QoS(10));
-    cmd_vel_pub_ =
-      this->create_publisher<geometry_msgs::msg::Twist>(CMD_VEL_TOPIC, rclcpp::QoS(10));
+    opti_twists_pub_ = this->create_publisher<extension_msgs::msg::TwistMultiArray>(
+      OPTITWISTS_TOPIC, rclcpp::QoS(10));
     perfomance_pub_ = this->create_publisher<std_msgs::msg::Float32>(
       "mpc_path_planning/solve_time", rclcpp::QoS(5));
     dist_map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>(
@@ -187,10 +183,18 @@ public:
         gen_distance_map_ = false;
       });
     goal_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
-      TARGET_TOPIC, rclcpp::QoS(10),
-      [&](geometry_msgs::msg::PoseStamped::SharedPtr msg) { target_pose_ = make_pose(msg->pose); });
+      TARGET_TOPIC, rclcpp::QoS(10), [&](geometry_msgs::msg::PoseStamped::SharedPtr msg) {
+        target_pose_ = make_pose(msg->pose);
+        end_ = false;
+      });
+    end_sub_ = this->create_subscription<std_msgs::msg::Empty>(
+      "mpc_path_planning/end", rclcpp::QoS(10),
+      [&](std_msgs::msg::Empty::SharedPtr msg) { end_ = true; });
     // timer
     path_planning_timer_ = this->create_wall_timer(1s * PLANNING_PERIOD, [&]() {
+      if (end_) {
+        target_pose_ = std::nullopt;
+      }
       if (!tf_buffer_.canTransform(
             ROBOT_FRAME, MAP_FRAME, rclcpp::Time(0),
             tf2::durationFromSec(1.0))) {  // 変換無いよ
@@ -204,17 +208,17 @@ public:
         RCLCPP_INFO_CHANGE(0, this->get_logger(), "get base_link pose");
         // 速度計算
         auto now_time = this->get_clock()->now();
-        double dt = (now_time - latest_planning_time_).seconds();
-        now_vel_.linear = (base_link_pose.position - old_base_link_pose_.position) * dt;
+        double dt = (now_time - pre_planning_time_).seconds();
+        now_vel_.linear = (base_link_pose.position - pre_base_link_pose_.position) * dt;
 #if defined(NON_HOLONOMIC)
         now_vel_.linear.x = std::hypot(now_vel_.linear.x, now_vel_.linear.y);
         now_vel_.linear.y = 0.0;
 #endif
         now_vel_.angular =
-          Angles(base_link_pose.orientation.get_rpy() - old_base_link_pose_.orientation.get_rpy()) *
+          Angles(base_link_pose.orientation.get_rpy() - pre_base_link_pose_.orientation.get_rpy()) *
           dt;
-        old_base_link_pose_ = base_link_pose;
-        latest_planning_time_ = this->get_clock()->now();
+        pre_base_link_pose_ = base_link_pose;
+        pre_planning_time_ = this->get_clock()->now();
         // 経路計算
         if (map_msg_) {
           calc_distance_map();
@@ -234,124 +238,30 @@ public:
             Pathd opti_path = planner_->pathplanning(start, end);
             Pathd grid_path = planner_->get_grid_path();
             // publish grid path
-            grid_path_pub_->publish(make_nav_path(make_header(MAP_FRAME, rclcpp::Clock().now()), grid_path));
+            grid_path_pub_->publish(
+              make_nav_path(make_header(MAP_FRAME, rclcpp::Clock().now()), grid_path));
             if (planner_->optimization()) {  //最適化成功
-              opti_path_ = opti_path;        //最適経路更新
               // publish opti path
               auto [o_ppath, o_vpath, o_apath] =
-                make_msg_paths(make_header(MAP_FRAME, rclcpp::Clock().now()), opti_path_.value());
+                make_msg_paths(make_header(MAP_FRAME, rclcpp::Clock().now()), opti_path);
               opti_path_pub_->publish(o_ppath);
+              opti_twists_pub_->publish(o_vpath);
               //debug
-              std_msgs::msg::Float32 time_msg;
-              time_msg.data = planner_->solve_time_ * 1000;
-              perfomance_pub_->publish(time_msg);
+              perfomance_pub_->publish(make_float32(planner_->solve_time_ * 1000));
             }
           }
         }
       }
-    });
-    control_timer_ = this->create_wall_timer(1s * CONTROL_PERIOD, [&]() {
-      if (!tf_buffer_.canTransform(
-            ROBOT_FRAME, MAP_FRAME, rclcpp::Time(0),
-            tf2::durationFromSec(1.0))) {  // 変換無いよ
-        RCLCPP_WARN(
-          this->get_logger(), "%s %s can not Transform", MAP_FRAME.c_str(), ROBOT_FRAME.c_str());
-        return;
-      }
-      auto map_to_base_link = lookup_transform(tf_buffer_, ROBOT_FRAME, MAP_FRAME);
-      if (map_to_base_link && opti_path_) {
-        Pose3d base_link_pose = make_pose(map_to_base_link.value().transform);
-        RCLCPP_INFO_CHANGE(0, this->get_logger(), "get opti_path");
-        // 制御出力
-        Twistd cmd_vel = make_twist(stop());
-        auto now_time = this->get_clock()->now();
-        auto duration = now_time - latest_control_time_;
-        double control_time = duration.seconds();
-        if (control_time < 0) control_time = 0;
-        size_t horizon = std::round(control_time / mpc_config_.dt);
-        if (horizon < opti_path_.value().points.size()) {
-          auto & target_twist0 = opti_path_.value().points[horizon].velocity;
-          auto nhorizon = horizon;
-          if (horizon + 1 < opti_path_.value().points.size()) nhorizon += 1;
-          auto & target_twist1 = opti_path_.value().points[nhorizon].velocity;
-#if defined(CONTROL_DEBUG_OUTPUT)
-          std::cout << "----------------------------------------------------------" << std::endl;
-          std::cout << "target_twist0:" << target_twist0 << std::endl;
-          std::cout << "target_twist1:" << target_twist1 << std::endl;
-#endif
-          double t = (control_time - mpc_config_.dt * horizon) / mpc_config_.dt;
-          if (t < 0) t = 0;
-          Vector3d v0 = {target_twist0.linear.x, target_twist0.linear.y, target_twist0.angular.z};
-          Vector3d v1 = {target_twist1.linear.x, target_twist1.linear.y, target_twist1.angular.z};
-          Vector3d v = v0 + (v1 - v0) * t;
-#if defined(CONTROL_DEBUG_OUTPUT)
-          std::cout << "t:" << t << std::endl;
-          std::cout << "v:" << v << std::endl;
-#endif
-          Vector2d v_xy = {v.x, v.y};
-#if !defined(NON_HOLONOMIC)
-          v_xy.rotate(-base_link_pose.orientation.get_rpy().z);
-#if defined(CONTROL_DEBUG_OUTPUT)
-          std::cout << "rot_v_xy:" << v_xy << std::endl;
-#endif
-#endif
-          cmd_vel.linear.x = v_xy.x;
-          cmd_vel.linear.y = v_xy.y;
-          cmd_vel.angular.z = v.z;
-        }
-        if (target_pose_) {
-          double target_dist =
-            Vector3d::distance(target_pose_.value().position, base_link_pose.position);
-          double target_diff_angle = std::abs(
-            target_pose_.value().orientation.get_rpy().z - base_link_pose.orientation.get_rpy().z);
-          double vel = cmd_vel.linear.norm();
-          double angular = cmd_vel.angular.norm();
-#if defined(CONTROL_DEBUG_OUTPUT)
-          std::cout << "target_dist:" << target_dist << std::endl;
-          std::cout << "target_diff_angle:" << target_diff_angle << std::endl;
-          std::cout << "vel:" << vel << std::endl;
-          std::cout << "angular:" << angular << std::endl;
-#endif
-          // ゴール判定
-          if (target_dist < GOAL_POS_RANGE) {
-            if (target_diff_angle < GOAL_ANGLE_RANGE) {
-              if (
-                approx_zero(vel, GOAL_MIN_VEL_RANGE) &&
-                approx_zero(angular, GOAL_MIN_ANGULAR_RANGE)) {
-                RCLCPP_INFO(this->get_logger(), "goal !");
-                target_pose_ = std::nullopt;
-                opti_path_ = std::nullopt;
-                cmd_vel_pub_->publish(stop());
-                return;
-              }
-            }
-          }
-        }
-#if defined(CONTROL_DEBUG_OUTPUT)
-        std::cout << "control_time:" << control_time << std::endl;
-        std::cout << "horizon:" << horizon << std::endl;
-        std::cout << "cmd_vel:" << cmd_vel << std::endl;
-        std::cout << "now_vel_:" << now_vel_ << std::endl;
-#endif
-        cmd_vel_pub_->publish(make_geometry_twist(cmd_vel));
-      } else
-        cmd_vel_pub_->publish(stop());
-      latest_control_time_ = this->get_clock()->now();
     });
   }
 
 private:
   bool gen_distance_map_;
+  bool end_ = false;
   // param
   std::string MAP_FRAME;
   std::string ROBOT_FRAME;
-  std::string ODOM_FRAME;
-  double CONTROL_PERIOD;
   double PLANNING_PERIOD;
-  double GOAL_POS_RANGE;
-  double GOAL_ANGLE_RANGE;
-  double GOAL_MIN_VEL_RANGE;
-  double GOAL_MIN_ANGULAR_RANGE;
   mpc_config_t mpc_config_;
   // tf
   tf2_ros::Buffer tf_buffer_;
@@ -359,28 +269,27 @@ private:
   // timer
   rclcpp::TimerBase::SharedPtr path_planning_timer_;
   rclcpp::TimerBase::SharedPtr control_timer_;
-  rclcpp::Time latest_control_time_, latest_planning_time_;
+  rclcpp::Time pre_planning_time_;
   // subscriber
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr goal_sub_;
+  rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr end_sub_;
   // publisher
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr grid_path_pub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr opti_path_pub_;
-  rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_pub_;
+  rclcpp::Publisher<extension_msgs::msg::TwistMultiArray>::SharedPtr opti_twists_pub_;
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr perfomance_pub_;
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr dist_map_pub_;
   // twist
   Twistd now_vel_;
   // pose
   std::optional<Pose3d> target_pose_;
-  Pose3d old_base_link_pose_;
+  Pose3d pre_base_link_pose_;
   // map
   nav_msgs::msg::OccupancyGrid::SharedPtr map_msg_;
   nav_msgs::msg::OccupancyGrid dist_map_msg_;
   // planner
   std::shared_ptr<MPCPathPlanner> planner_;
-  //path
-  std::optional<Pathd> opti_path_;
 
   Vector2d vector2_cast(const PathPointd & p) { return {p.pose.position.x, p.pose.position.y}; }
   PathPointd pathpoint_cast(const Vector2d & v)
@@ -401,23 +310,14 @@ private:
     return out;
   }
 
-  geometry_msgs::msg::Twist stop()
-  {
-    geometry_msgs::msg::Twist twist;
-    twist.linear.x = 0.0;
-    twist.linear.y = 0.0;
-    twist.linear.z = 0.0;
-    twist.angular.x = 0.0;
-    twist.angular.y = 0.0;
-    twist.angular.z = 0.0;
-    return twist;
-  }
-
   void calc_distance_map()
   {
     if (!map_msg_) return;
     if (gen_distance_map_) return;
     using namespace cv;
+#if defined(PLANNING_DEBUG_OUTPUT)
+    std::cout << "calc distance map start!" << std::endl;
+#endif
     dist_map_msg_.header = map_msg_->header;
     dist_map_msg_.info = map_msg_->info;
     dist_map_msg_.data.resize(dist_map_msg_.info.width * dist_map_msg_.info.height);
@@ -469,9 +369,11 @@ private:
     // cv::resize(dist_img, convert_mat, cv::Size(), ratio, ratio, cv::INTER_NEAREST);
     // cv::imshow("dist_map", convert_mat);
     // cv::waitKey(0);
+#if defined(PLANNING_DEBUG_OUTPUT)
+    std::cout << "calc distance map end!" << std::endl;
+#endif
     gen_distance_map_ = true;
   }
-
 
   // MPU追加制約
   void init_parameter()
