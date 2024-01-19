@@ -87,12 +87,16 @@ public:
       "mpc_path_planning.mpc.weight.state", std::vector<double>{10, 10, 6, 200, 200, 60});
     std::vector<double> FINAL_STATE_WEIGHT = param<std::vector<double>>(
       "mpc_path_planning.mpc.weight.final_state", std::vector<double>{10, 10, 6, 200, 200, 60});
+    std::vector<double> REF_STATE_WEIGHT = param<std::vector<double>>(
+      "mpc_path_planning.mpc.weight.ref_state", std::vector<double>{0, 0, 0, 0, 0, 0});
     std::vector<double> CONTROL_WEIGHT = param<std::vector<double>>(
       "mpc_path_planning.mpc.weight.control", std::vector<double>{3, 3, 2});
     mpc_config_.state_weight << STATE_WEIGHT[0], STATE_WEIGHT[1], STATE_WEIGHT[2], STATE_WEIGHT[3],
       STATE_WEIGHT[4], STATE_WEIGHT[5];
     mpc_config_.final_state_weight << FINAL_STATE_WEIGHT[0], FINAL_STATE_WEIGHT[1],
       FINAL_STATE_WEIGHT[2], FINAL_STATE_WEIGHT[3], FINAL_STATE_WEIGHT[4], FINAL_STATE_WEIGHT[5];
+    mpc_config_.ref_state_weight << REF_STATE_WEIGHT[0], REF_STATE_WEIGHT[1],
+      REF_STATE_WEIGHT[2], REF_STATE_WEIGHT[3], REF_STATE_WEIGHT[4], REF_STATE_WEIGHT[5];
     mpc_config_.control_weight << CONTROL_WEIGHT[0], CONTROL_WEIGHT[1], CONTROL_WEIGHT[2];
     mpc_config_.lpf_xy_gain = mpc_config_.dt / (mpc_config_.dt + mpc_config_.xy_vel_time_constant);
     mpc_config_.lpf_theta_gain =
