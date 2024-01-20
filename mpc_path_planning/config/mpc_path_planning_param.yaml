@@ -2,52 +2,50 @@ mpc_path_planning_node:
   ros__parameters:
     mpc_path_planning:
       topic_name:
-        map: "/map"
-        target: "/goal_pose"
-        grid_path: "mpc_path_planning/grid_path"
-        opti_path: "mpc_path_planning/opti_path"
+        map:         "/map"
+        target:      "/goal_pose"
+        grid_path:   "mpc_path_planning/grid_path"
+        opti_path:   "mpc_path_planning/opti_path"
         opti_twists: "mpc_path_planning/twists"
       tf_frame:
-        map_frame: "map"
+        map_frame:   "map"
         robot_frame: "base_link"
       planning_period: 0.001 #[s]
       mpc:
-        dt: 0.1 # 0.135
-        horizon_time: 5.0
-        # pos_error: 0.035 #0.015 # 0.01
-        pos_error: 100000000.0
-        max_vel: 1.0
-        max_angular: 2.84
-        max_acc: 3.9 #1.1 #4.9 # 0.98
-        max_angular_acc: 4.9 #1.0
-        weight:
-          state: [0.5, 0.0, 0.5, 50.0, 50.0, 0.1] #[10.0, 0.0, 10.0, 800.0, 800.0, 10.0]
-          final_state: [0.5, 0.0, 0.5, 60.0, 60.0, 1.0] #[10.0, 0.0, 10.0, 800.0, 800.0, 10.0]
-          ref_state: [0.0, 0.0, 0.0, 50.0, 50.0, 5.0]
-          control: [5.0, 0.0, 5.0]
-        ipopt:
-          sb: "yes" # コンソールにヘッダを出力しない
-          # linear_solver: "mumps" # mumpsは遅い ma27はHSLライブラリ必要 (mumps:40msくらい,ma27:10msくらい)
-          linear_solver: "ma27" # mumpsは遅い ma27はHSLライブラリ必要 (mumps:40msくらい,ma27:10msくらい)
-          max_iter: 500 #最大反復回数
-          acceptable_tol: 0.00001 #収束許容値 0.000001
-          compl_inf_tol: 0.0001 #相補性条件の「許容」しきい値 0.0001
-        # grid_path_planner: "a_star"
+        dt:              0.1 #[s] 0.135
+        horizon_time:    5.0
+        # pos_error:      0.035 #0.015 # 0.01
+        pos_error:       100000000.0 #[m]
+        max_vel:         1.0  #[m/s]
+        max_angular:     2.84 #[rad/s]
+        max_acc:         3.9  #[m/s^s] 1.1 4.9 0.98
+        max_angular_acc: 4.9  #[rad/s^s] 1.0
+        weight: #重み[vx,vy,w,x,y,x]
+          state:       [0.5, 0.0, 0.5, 50.0, 50.0, 0.1] #ステートコストの重み [10.0, 0.0, 10.0, 800.0, 800.0, 10.0]
+          final_state: [0.5, 0.0, 0.5, 60.0, 60.0, 1.0] #終端コストの重み     [10.0, 0.0, 10.0, 800.0, 800.0, 10.0]
+          ref_state:   [0.0, 0.0, 0.0, 50.0, 50.0, 5.0] #初期経路(grid_path)とのエラーコストの重み
+          control:     [5.0, 0.0, 5.0]                  #制御量コストの重み
+        ipopt:  #ソルバー設定
+          sb: "yes"                # コンソールにヘッダを出力しない
+          linear_solver: "ma27"    # mumpsは遅い ma27はHSLライブラリ必要 (mumps:40msくらい,ma27:10msくらい)
+          max_iter: 500            #最大反復回数 def 500
+          acceptable_tol: 0.00001  #収束許容値 def 0.000001
+          compl_inf_tol:  0.0001   #相補性条件の「許容」しきい値 def 0.0001
         grid_path_planner: "extension_a_star" #dijkstra,dijkstra_dist_map,a_star,extension_a_star,wave_propagation,wave_propagation_dist_map
 
 control_node:
   ros__parameters:
     control:
       topic_name:
-        opti_path: "mpc_path_planning/opti_path"
+        opti_path:   "mpc_path_planning/opti_path"
         opti_twists: "mpc_path_planning/twists"
-        cmd_vel: "cmd_vel"
+        cmd_vel:     "cmd_vel"
       tf_frame:
-        map_frame: "map"
+        map_frame:   "map"
         robot_frame: "base_link"
       control_period: 0.005 #[s]
       goal:
-        pos_range: 0.05
-        angle_range: 0.1
-        min_vel_range: 0.005
-        min_angular_range: 0.01
+        pos_range:         0.05  #[m]
+        angle_range:       0.5   #[deg]
+        min_vel_range:     0.005 #[m/s]
+        min_angular_range: 0.01  #[m/s^s]

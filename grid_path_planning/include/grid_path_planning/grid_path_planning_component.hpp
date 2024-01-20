@@ -98,7 +98,7 @@ public:
             std::cout << map.info.resolution << std::endl;
             start.pose = base_link_pose_;
             end.pose = target_pose_.value();
-            Pathd grid_path = planner_->pathplanning(start, end);
+            Pathd grid_path = planner_->path_planning(start, end);
             std::cout << grid_path << std::endl;
             grid_path_pub_->publish(make_nav_path(make_header(MAP_FRAME, rclcpp::Clock().now()), grid_path));
             target_pose_ = std::nullopt;

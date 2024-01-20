@@ -37,7 +37,7 @@ public:
     CONTROL_PERIOD = param<double>("control.control_period", 0.001);
     // 収束判定
     GOAL_POS_RANGE = param<double>("control.goal.pos_range", 0.01);
-    GOAL_ANGLE_RANGE = param<double>("control.goal.angle_range", 0.1);
+    GOAL_ANGLE_RANGE = unit_cast<unit::angle::rad>(param<double>("control.goal.angle_range", 0.1));
     GOAL_MIN_VEL_RANGE = param<double>("control.goal.min_vel_range", 0.001);
     GOAL_MIN_ANGULAR_RANGE = param<double>("control.goal.min_angular_range", 0.001);
     // init

@@ -22,9 +22,9 @@
 #include "common_lib/ros2_utility/extension_msgs_util.hpp"
 #include "common_lib/ros2_utility/msg_util.hpp"
 #include "common_lib/ros2_utility/tf_util.hpp"
+#include "common_lib/ros2_utility/ros_opencv_util.hpp"
 #include "cv_bridge/cv_bridge.h"
 #include "extension_node/extension_node.hpp"
-// #include "common_lib/ros2_utility/marker_util.hpp"
 // other
 #include "common_lib/common_lib.hpp"
 
@@ -111,7 +111,6 @@ public:
     auto solver_option = [&]() -> casadi::Dict {
       return {
         {"ipopt.sb", IPOPT_SB.c_str()},  // コンソールにヘッダを出力しない
-        // {"ipopt.linear_solver", "ma27"}, // mumpsは遅い ma27はHSLライブラリ必要
         {"ipopt.linear_solver",
          IPOPT_LINEAR_SOLVER.c_str()},  // mumpsは遅い ma27はHSLライブラリ必要
         {"ipopt.max_iter", IPOPT_MAX_ITER},
@@ -219,7 +218,7 @@ public:
         now_vel_.linear.y = 0.0;
 #endif
         now_vel_.angular =
-          Angles(base_link_pose.orientation.get_rpy() - pre_base_link_pose_.orientation.get_rpy()) *
+          Angles<Vector3d>(base_link_pose.orientation.get_rpy() - pre_base_link_pose_.orientation.get_rpy()) *
           dt;
         pre_base_link_pose_ = base_link_pose;
         pre_planning_time_ = this->get_clock()->now();
@@ -239,7 +238,7 @@ public:
             start.velocity = now_vel_;
             end.pose = target_pose_.value();
             // path planning
-            Pathd opti_path = planner_->pathplanning(start, end);
+            Pathd opti_path = planner_->path_planning(start, end);
             Pathd grid_path = planner_->get_grid_path();
             // publish grid path
             grid_path_pub_->publish(
@@ -295,30 +294,10 @@ private:
   // planner
   std::shared_ptr<MPCPathPlanner> planner_;
 
-  Vector2d vector2_cast(const PathPointd & p) { return {p.pose.position.x, p.pose.position.y}; }
-  PathPointd pathpoint_cast(const Vector2d & v)
-  {
-    PathPointd p;
-    p.pose.position.x = v.x;
-    p.pose.position.y = v.y;
-    p.pose.position.z = 0.0;
-    return p;
-  }
-
-  Vector3d Angles(Vector3d in)
-  {
-    Vector3d out;
-    out.x = Angle(in.x);
-    out.y = Angle(in.y);
-    out.z = Angle(in.z);
-    return out;
-  }
-
   void calc_distance_map()
   {
     if (!map_msg_) return;
     if (gen_distance_map_) return;
-    using namespace cv;
 #if defined(PLANNING_DEBUG_OUTPUT)
     std::cout << "calc distance map start!" << std::endl;
 #endif
@@ -326,53 +305,27 @@ private:
     dist_map_msg_.info = map_msg_->info;
     dist_map_msg_.data.resize(dist_map_msg_.info.width * dist_map_msg_.info.height);
     Pose3d origin = make_pose(map_msg_->info.origin);
-    Mat img = Mat::zeros(cv::Size(map_msg_->info.width, map_msg_->info.height), CV_8UC1);
-    for (unsigned int y = 0; y < map_msg_->info.height; y++) {
-      for (unsigned int x = 0; x < map_msg_->info.width; x++) {
-        unsigned int i = x + (map_msg_->info.height - y - 1) * map_msg_->info.width;
-        int intensity = 205;
-        if (map_msg_->data[i] >= 0 && map_msg_->data[i] <= 100)
-          intensity = std::round((float)(100.0 - map_msg_->data[i]) * 2.55);
-        img.at<unsigned char>(y, x) = intensity;
-      }
-    }
-    Mat binary, dist_img, convert_dist_img;
+    cv::Mat img = make_cv_mat(*map_msg_);
+    cv::Mat dist_img, convert_dist_img;
     //二値化
-    cv::threshold(img, binary, 250, 255, cv::THRESH_BINARY);
+    cv::threshold(img, img, 250, 255, cv::THRESH_BINARY);
     //距離場計算
-    cv::distanceTransform(binary, dist_img, CV_DIST_L2, 5);
-    // dist_img.convertTo(convert_dist_img, CV_32FC1, 1.0 / 255.0);
+    cv::distanceTransform(img, dist_img, CV_DIST_L2, 5);
     dist_img.convertTo(convert_dist_img, CV_32FC1, 1.0);
     double min, max;
     cv::Point min_p, max_p;
     cv::minMaxLoc(convert_dist_img, &min, &max, &min_p, &max_p);
-    // std::cout << max << std::endl;
     for (size_t y = 0; y < dist_map_msg_.info.height; y++) {
       for (size_t x = 0; x < dist_map_msg_.info.width; x++) {
         float pixel =
           transform_range<float>(max - convert_dist_img.at<float>(y, x), min, max, 0.0, 100.0);
         if (pixel > 100.0) pixel = 100.0;
         if (pixel < 0.0) pixel = 0.0;
-        // std::cout << (float)pixel << std::endl;
         dist_map_msg_.data[dist_map_msg_.info.width * (dist_map_msg_.info.height - y - 1) + x] =
           static_cast<int8_t>(pixel);
       }
     }
     dist_map_pub_->publish(dist_map_msg_);
-    // cv::resize(img, convert_mat, cv::Size(), ratio, ratio, cv::INTER_NEAREST);
-    // cv::imshow("map", convert_mat);
-    // cv::resize(binary, convert_mat, cv::Size(), ratio, ratio, cv::INTER_NEAREST);
-    // cv::imshow("binary_map", convert_mat);
-    // dist_img = dist_img * 51.0;
-    // Mat convert_mat;
-    // //縦横どっちか長い方は？
-    // int big_width = img.cols > img.rows ? img.cols : img.rows;
-    // //割合
-    // int width = 1000;
-    // double ratio = ((double)width / (double)big_width);
-    // cv::resize(dist_img, convert_mat, cv::Size(), ratio, ratio, cv::INTER_NEAREST);
-    // cv::imshow("dist_map", convert_mat);
-    // cv::waitKey(0);
 #if defined(PLANNING_DEBUG_OUTPUT)
     std::cout << "calc distance map end!" << std::endl;
 #endif
@@ -380,32 +333,12 @@ private:
   }
 
   // MPU追加制約
-  void init_parameter()
-  {
-    // for (size_t i = 0; i < lagori_poses_mx.size(); i++) {
-    //   lagori_poses_mx[i] = add_parameter(2, 1, [this, i]() {
-    //     using namespace casadi;
-    //     DM dm_pos = DM::zeros(2);
-    //     std::copy(
-    //       lagori_poses[i].data(), lagori_poses[i].data() + lagori_poses[i].size(), dm_pos.ptr());
-
-    //     return dm_pos;
-    //   });
-    // }
-  }
+  void init_parameter() {}
 
   void add_cost_function(casadi::MX & cost, const casadi::MX & X, const casadi::MX & U)
   {
     using namespace casadi;
     using Sl = casadi::Slice;
-
-    // const double robot_colision_size = 0.8;
-    // const double fence_width = 0.05;
-
-    // for(size_t i = 1; i < X.size2(); i++)
-    // {
-    //     cost = cost + 100*get_guard_circle_cost(X(Sl(3,5), i), MX::vertcat({6-fence_width, 6-fence_width}), MX::vertcat({0.5+robot_colision_size-0.1, 0.5+robot_colision_size-0.1}), "keep out");
-    // }
   }
 
   void add_constraints(casadi::Opti & opti, const casadi::MX & X, const casadi::MX & U)
@@ -414,41 +347,12 @@ private:
     using Sl = casadi::Slice;
 
     const double robot_colision_size = 0.75;
-
     // for (size_t i = 1; i < X.size2(); i++) {//get_guard_circle_subject(const casadi::MX &xy, const casadi::MX &center, const casadi::MX &size, std::string comp)
     //   // test
     //   opti.subject_to(get_guard_circle_subject(
     //     X(Sl(3, 5), i), MX::vertcat({-1.15, 0.0}),
     //     MX::vertcat({0.05 + robot_colision_size, 0.05 + robot_colision_size}),
     //     "keep out"));
-    // }
-
-    // const double fence_width = 0.05;
-    // // シーカー
-    // for (size_t i = 1; i < X.size2(); i++) {
-    //   // フィールド・ラゴリエリア内にいる制約
-    //   opti.subject_to(get_guard_rect_subject(
-    //     X(Sl(3, 5), i), 6 - fence_width, 9.5 / 2, 9 - robot_colision_size,
-    //     9.5 - robot_colision_size, "keep in"));
-
-    //   // ラゴリ台にぶつからない制約
-    //   opti.subject_to(get_guard_rect_subject_approx(
-    //     X(Sl(3, 5), i), MX::vertcat({6 - fence_width, 6 - fence_width}),
-    //     MX::vertcat({0.5 + robot_colision_size - 0.1, 0.5 + robot_colision_size - 0.1}), 10,
-    //     "keep out"));
-
-    //   // R1にぶつからない制約
-    //   opti.subject_to(get_guard_rect_subject_approx(
-    //     X(Sl(3, 5), i), MX::vertcat({6 - fence_width, 2 - fence_width}),
-    //     MX::vertcat({1.3 + robot_colision_size, 1.3 + robot_colision_size}), 6, "keep out"));
-
-    //   // ラゴリにぶつからない制約
-    //   for (size_t lagori_num = 0; lagori_num < lagori_poses_mx.size(); lagori_num++) {
-    //     double diameter = 0.5 + robot_colision_size - (0.075 * i);
-    //     opti.subject_to(get_guard_circle_subject(
-    //       X(Sl(3, 5), i), *(lagori_poses_mx[lagori_num]), MX::vertcat({diameter, diameter}),
-    //       "keep out"));
-    //   }
     // }
   }
 };
