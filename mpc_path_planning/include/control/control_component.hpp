@@ -186,15 +186,6 @@ private:
   std::optional<nav_msgs::msg::Path> opti_path_;
   std::optional<extension_msgs::msg::TwistMultiArray> opti_twists_;
 
-  Vector3d Angles(Vector3d in)
-  {
-    Vector3d out;
-    out.x = Angle(in.x);
-    out.y = Angle(in.y);
-    out.z = Angle(in.z);
-    return out;
-  }
-
   geometry_msgs::msg::Twist stop()
   {
     geometry_msgs::msg::Twist twist;

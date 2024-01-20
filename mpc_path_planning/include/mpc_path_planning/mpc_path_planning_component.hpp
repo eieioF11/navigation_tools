@@ -39,6 +39,7 @@
 
 #define _ENABLE_ATOMIC_ALIGNMENT_FIX
 //******************************************************************************
+// モデル設定
 #define NON_HOLONOMIC
 // デバック関連設定
 #define PLANNING_DEBUG_OUTPUT
@@ -49,25 +50,25 @@ using namespace std::chrono_literals;
 class MPCPathPlanning : public ExtensionNode
 {
 public:
-  MPCPathPlanning(const rclcpp::NodeOptions & options) : MPCPathPlanning("", options) {}
+  MPCPathPlanning(const rclcpp::NodeOptions &options) : MPCPathPlanning("", options) {}
   MPCPathPlanning(
-    const std::string & name_space = "",
-    const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
-  : ExtensionNode("mpc_path_planning_node", name_space, options),
-    tf_buffer_(this->get_clock()),
-    listener_(tf_buffer_)
+      const std::string &name_space = "",
+      const rclcpp::NodeOptions &options = rclcpp::NodeOptions())
+      : ExtensionNode("mpc_path_planning_node", name_space, options),
+        tf_buffer_(this->get_clock()),
+        listener_(tf_buffer_)
   {
     RCLCPP_INFO(this->get_logger(), "start mpc_path_planning_node");
     // get param
     std::string MAP_TOPIC = param<std::string>("mpc_path_planning.topic_name.map", "/map");
     std::string TARGET_TOPIC =
-      param<std::string>("mpc_path_planning.topic_name.target", "/goal_pose");
+        param<std::string>("mpc_path_planning.topic_name.target", "/goal_pose");
     std::string GRIDPATH_TOPIC =
-      param<std::string>("mpc_path_planning.topic_name.grid_path", "mpc_path_planning/grid_path");
+        param<std::string>("mpc_path_planning.topic_name.grid_path", "mpc_path_planning/grid_path");
     std::string OPTIPATH_TOPIC =
-      param<std::string>("mpc_path_planning.topic_name.opti_path", "mpc_path_planning/opti_path");
+        param<std::string>("mpc_path_planning.topic_name.opti_path", "mpc_path_planning/opti_path");
     std::string OPTITWISTS_TOPIC =
-      param<std::string>("mpc_path_planning.topic_name.opti_twists", "mpc_path_planning/twists");
+        param<std::string>("mpc_path_planning.topic_name.opti_twists", "mpc_path_planning/twists");
     // frame
     MAP_FRAME = param<std::string>("mpc_path_planning.tf_frame.map_frame", "map");
     ROBOT_FRAME = param<std::string>("mpc_path_planning.tf_frame.robot_frame", "base_link");
@@ -78,57 +79,58 @@ public:
     double HORIZON_TIME = param<double>("mpc_path_planning.mpc.horizon_time", 7.0);
     mpc_config_.horizon = static_cast<size_t>(HORIZON_TIME / mpc_config_.dt);
     mpc_config_.pos_error = param<double>("mpc_path_planning.mpc.pos_error", 100.0);
-    mpc_config_.max_vel = param<double>("mpc_path_planning.mpc.max_vel", 1.0);          // [m/s]
-    mpc_config_.max_angular = param<double>("mpc_path_planning.mpc.max_angular", 1.0);  // [m/s]
-    mpc_config_.max_acc = param<double>("mpc_path_planning.mpc.max_acc", 0.98);         // [m/s^2]
+    mpc_config_.max_vel = param<double>("mpc_path_planning.mpc.max_vel", 1.0);         // [m/s]
+    mpc_config_.max_angular = param<double>("mpc_path_planning.mpc.max_angular", 1.0); // [m/s]
+    mpc_config_.max_acc = param<double>("mpc_path_planning.mpc.max_acc", 0.98);        // [m/s^2]
     mpc_config_.max_angular_acc =
-      param<double>("mpc_path_planning.mpc.max_angular_acc", 1.0);  // [rad/s^2]
+        param<double>("mpc_path_planning.mpc.max_angular_acc", 1.0); // [rad/s^2]
     std::vector<double> STATE_WEIGHT = param<std::vector<double>>(
-      "mpc_path_planning.mpc.weight.state", std::vector<double>{10, 10, 6, 200, 200, 60});
+        "mpc_path_planning.mpc.weight.state", std::vector<double>{10, 10, 6, 200, 200, 60});
     std::vector<double> FINAL_STATE_WEIGHT = param<std::vector<double>>(
-      "mpc_path_planning.mpc.weight.final_state", std::vector<double>{10, 10, 6, 200, 200, 60});
+        "mpc_path_planning.mpc.weight.final_state", std::vector<double>{10, 10, 6, 200, 200, 60});
     std::vector<double> REF_STATE_WEIGHT = param<std::vector<double>>(
-      "mpc_path_planning.mpc.weight.ref_state", std::vector<double>{0, 0, 0, 0, 0, 0});
+        "mpc_path_planning.mpc.weight.ref_state", std::vector<double>{0, 0, 0, 0, 0, 0});
     std::vector<double> CONTROL_WEIGHT = param<std::vector<double>>(
-      "mpc_path_planning.mpc.weight.control", std::vector<double>{3, 3, 2});
+        "mpc_path_planning.mpc.weight.control", std::vector<double>{3, 3, 2});
     mpc_config_.state_weight << STATE_WEIGHT[0], STATE_WEIGHT[1], STATE_WEIGHT[2], STATE_WEIGHT[3],
-      STATE_WEIGHT[4], STATE_WEIGHT[5];
+        STATE_WEIGHT[4], STATE_WEIGHT[5];
     mpc_config_.final_state_weight << FINAL_STATE_WEIGHT[0], FINAL_STATE_WEIGHT[1],
-      FINAL_STATE_WEIGHT[2], FINAL_STATE_WEIGHT[3], FINAL_STATE_WEIGHT[4], FINAL_STATE_WEIGHT[5];
+        FINAL_STATE_WEIGHT[2], FINAL_STATE_WEIGHT[3], FINAL_STATE_WEIGHT[4], FINAL_STATE_WEIGHT[5];
     mpc_config_.ref_state_weight << REF_STATE_WEIGHT[0], REF_STATE_WEIGHT[1],
-      REF_STATE_WEIGHT[2], REF_STATE_WEIGHT[3], REF_STATE_WEIGHT[4], REF_STATE_WEIGHT[5];
+        REF_STATE_WEIGHT[2], REF_STATE_WEIGHT[3], REF_STATE_WEIGHT[4], REF_STATE_WEIGHT[5];
     mpc_config_.control_weight << CONTROL_WEIGHT[0], CONTROL_WEIGHT[1], CONTROL_WEIGHT[2];
     mpc_config_.lpf_xy_gain = mpc_config_.dt / (mpc_config_.dt + mpc_config_.xy_vel_time_constant);
     mpc_config_.lpf_theta_gain =
-      mpc_config_.dt / (mpc_config_.dt + mpc_config_.theta_vel_time_constant);
+        mpc_config_.dt / (mpc_config_.dt + mpc_config_.theta_vel_time_constant);
     std::string IPOPT_SB = param<std::string>("mpc_path_planning.mpc.ipopt.sb", "yes");
     std::string IPOPT_LINEAR_SOLVER = param<std::string>(
-      "mpc_path_planning.mpc.ipopt.linear_solver", "mumps");  // mumpsは遅い ma27はHSLライブラリ必要
+        "mpc_path_planning.mpc.ipopt.linear_solver", "mumps"); // mumpsは遅い ma27はHSLライブラリ必要
     int IPOPT_MAX_ITER = param<int>("mpc_path_planning.mpc.ipopt.max_iter", 500);
     double IPOPT_ACCEPTABLE_TOL =
-      param<double>("mpc_path_planning.mpc.ipopt.acceptable_tol", 0.000001);
+        param<double>("mpc_path_planning.mpc.ipopt.acceptable_tol", 0.000001);
     double IPOPT_COMPL_INF_TOL = param<double>("mpc_path_planning.mpc.ipopt.compl_inf_tol", 0.0001);
-    auto solver_option = [&]() -> casadi::Dict {
+    auto solver_option = [&]() -> casadi::Dict
+    {
       return {
-        {"ipopt.sb", IPOPT_SB.c_str()},  // コンソールにヘッダを出力しない
-        {"ipopt.linear_solver",
-         IPOPT_LINEAR_SOLVER.c_str()},  // mumpsは遅い ma27はHSLライブラリ必要
-        {"ipopt.max_iter", IPOPT_MAX_ITER},
-        {"ipopt.acceptable_tol", IPOPT_ACCEPTABLE_TOL},
-        {"ipopt.compl_inf_tol", IPOPT_COMPL_INF_TOL},
-        //{"ipopt.tol", 1.0e-8},
-        {"ipopt.print_level", 0},
-        {"print_time", false},
-        {"ipopt.warm_start_init_point", "yes"},
-        // {"ipopt.hessian_approximation", "limited-memory"},//使えてない
-        {"ipopt.fixed_variable_treatment", "make_constraint"},
-        {"expand", true},
+          {"ipopt.sb", IPOPT_SB.c_str()}, // コンソールにヘッダを出力しない
+          {"ipopt.linear_solver",
+           IPOPT_LINEAR_SOLVER.c_str()}, // mumpsは遅い ma27はHSLライブラリ必要
+          {"ipopt.max_iter", IPOPT_MAX_ITER},
+          {"ipopt.acceptable_tol", IPOPT_ACCEPTABLE_TOL},
+          {"ipopt.compl_inf_tol", IPOPT_COMPL_INF_TOL},
+          //{"ipopt.tol", 1.0e-8},
+          {"ipopt.print_level", 0},
+          {"print_time", false},
+          {"ipopt.warm_start_init_point", "yes"},
+          // {"ipopt.hessian_approximation", "limited-memory"},//使えてない
+          {"ipopt.fixed_variable_treatment", "make_constraint"},
+          {"expand", true},
       };
     };
     mpc_config_.solver_option = solver_option();
     // mpc_config_.solver_option = MPCPathPlanner::default_solver_option();//default 設定
     std::string GRID_PATH_PLANNING =
-      param<std::string>("mpc_path_planning.mpc.grid_path_planner", "a_star");
+        param<std::string>("mpc_path_planning.mpc.grid_path_planner", "a_star");
     // init
     RCLCPP_INFO(this->get_logger(), "Initialization !");
     end_ = true;
@@ -138,14 +140,15 @@ public:
     // 追加の制約等設定
     auto init_func = std::bind(&MPCPathPlanning::init_parameter, this);
     auto add_cost_func = std::bind(
-      &MPCPathPlanning::add_cost_function, this, std::placeholders::_1, std::placeholders::_2,
-      std::placeholders::_3);
+        &MPCPathPlanning::add_cost_function, this, std::placeholders::_1, std::placeholders::_2,
+        std::placeholders::_3);
     auto add_const = std::bind(
-      &MPCPathPlanning::add_constraints, this, std::placeholders::_1, std::placeholders::_2,
-      std::placeholders::_3);
+        &MPCPathPlanning::add_constraints, this, std::placeholders::_1, std::placeholders::_2,
+        std::placeholders::_3);
     // planner_->set_user_function(init_func,add_cost_func,add_const);
     // 最適化時間計測用
-    planner_->timer = [&]() { return now().seconds(); };
+    planner_->timer = [&]()
+    { return now().seconds(); };
     // グリッドパスプランニング設定
     if (GRID_PATH_PLANNING.compare("wave_propagation") == 0)
       planner_->set_grid_path_planner(std::make_shared<WavePropagation>());
@@ -173,31 +176,33 @@ public:
     grid_path_pub_ = this->create_publisher<nav_msgs::msg::Path>(GRIDPATH_TOPIC, rclcpp::QoS(10));
     opti_path_pub_ = this->create_publisher<nav_msgs::msg::Path>(OPTIPATH_TOPIC, rclcpp::QoS(10));
     opti_twists_pub_ = this->create_publisher<extension_msgs::msg::TwistMultiArray>(
-      OPTITWISTS_TOPIC, rclcpp::QoS(10));
+        OPTITWISTS_TOPIC, rclcpp::QoS(10));
     perfomance_pub_ = this->create_publisher<std_msgs::msg::Float32>(
-      "mpc_path_planning/solve_time", rclcpp::QoS(5));
+        "mpc_path_planning/solve_time", rclcpp::QoS(5));
     dist_map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>(
-      "mpc_path_planning/dist_map", rclcpp::QoS(5));
+        "mpc_path_planning/dist_map", rclcpp::QoS(5));
     // subscriber
     map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
-      MAP_TOPIC, rclcpp::QoS(10).reliable(),
-      [&](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
-        map_msg_ = msg;
-        gen_distance_map_ = false;
-      });
+        MAP_TOPIC, rclcpp::QoS(10).reliable(),
+        [&](const nav_msgs::msg::OccupancyGrid::SharedPtr msg)
+        {
+          map_msg_ = msg;
+          gen_distance_map_ = false;
+        });
     goal_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
-      TARGET_TOPIC, rclcpp::QoS(10), [&](geometry_msgs::msg::PoseStamped::SharedPtr msg) {
+        TARGET_TOPIC, rclcpp::QoS(10), [&](geometry_msgs::msg::PoseStamped::SharedPtr msg)
+        {
         target_pose_ = make_pose(msg->pose);
-        end_ = false;
-      });
+        end_ = false; });
     end_sub_ = this->create_subscription<std_msgs::msg::Empty>(
-      "mpc_path_planning/end", rclcpp::QoS(10),
-      [&](std_msgs::msg::Empty::SharedPtr msg) { end_ = true; });
+        "mpc_path_planning/end", rclcpp::QoS(10),
+        [&](std_msgs::msg::Empty::SharedPtr msg)
+        { end_ = true; });
     // timer
-    path_planning_timer_ = this->create_wall_timer(1s * PLANNING_PERIOD, [&]() {
-      if (end_) {
+    path_planning_timer_ = this->create_wall_timer(1s * PLANNING_PERIOD, [&]()
+                                                   {
+      if (end_)
         target_pose_ = std::nullopt;
-      }
       if (!tf_buffer_.canTransform(
             ROBOT_FRAME, MAP_FRAME, rclcpp::Time(0),
             tf2::durationFromSec(1.0))) {  // 変換無いよ
@@ -254,8 +259,7 @@ public:
             }
           }
         }
-      }
-    });
+      } });
   }
 
 private:
@@ -273,6 +277,7 @@ private:
   rclcpp::TimerBase::SharedPtr path_planning_timer_;
   rclcpp::TimerBase::SharedPtr control_timer_;
   rclcpp::Time pre_planning_time_;
+  rclcpp::Time start_create_distmap_time_;
   // subscriber
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr goal_sub_;
@@ -296,20 +301,23 @@ private:
 
   void calc_distance_map()
   {
-    if (!map_msg_) return;
-    if (gen_distance_map_) return;
+    if (!map_msg_)
+      return;
+    if (gen_distance_map_)
+      return;
 #if defined(PLANNING_DEBUG_OUTPUT)
     std::cout << "calc distance map start!" << std::endl;
 #endif
+    start_create_distmap_time_ = rclcpp::Clock().now();
     dist_map_msg_.header = map_msg_->header;
     dist_map_msg_.info = map_msg_->info;
     dist_map_msg_.data.resize(dist_map_msg_.info.width * dist_map_msg_.info.height);
     Pose3d origin = make_pose(map_msg_->info.origin);
     cv::Mat img = make_cv_mat(*map_msg_);
     cv::Mat dist_img, convert_dist_img;
-    //二値化
+    // 二値化
     cv::threshold(img, img, 250, 255, cv::THRESH_BINARY);
-    //距離場計算
+    // 距離場計算
     cv::distanceTransform(img, dist_img, CV_DIST_L2, 5);
     dist_img.convertTo(convert_dist_img, CV_32FC1, 1.0);
     double min, max;
@@ -321,12 +329,14 @@ private:
           transform_range<float>(max - convert_dist_img.at<float>(y, x), min, max, 0.0, 100.0);
         if (pixel > 100.0) pixel = 100.0;
         if (pixel < 0.0) pixel = 0.0;
-        dist_map_msg_.data[dist_map_msg_.info.width * (dist_map_msg_.info.height - y - 1) + x] =
-          static_cast<int8_t>(pixel);
+        double index = dist_map_msg_.info.width * (dist_map_msg_.info.height - y - 1) + x;
+        dist_map_msg_.data[index] = static_cast<int8_t>(pixel);
       }
     }
     dist_map_pub_->publish(dist_map_msg_);
 #if defined(PLANNING_DEBUG_OUTPUT)
+    double calc_time = (rclcpp::Clock().now() - start_create_distmap_time_).seconds();
+    std::cout << "calc_time:" << calc_time << std::endl;
     std::cout << "calc distance map end!" << std::endl;
 #endif
     gen_distance_map_ = true;
@@ -335,13 +345,13 @@ private:
   // MPU追加制約
   void init_parameter() {}
 
-  void add_cost_function(casadi::MX & cost, const casadi::MX & X, const casadi::MX & U)
+  void add_cost_function(casadi::MX &cost, const casadi::MX &X, const casadi::MX &U)
   {
     using namespace casadi;
     using Sl = casadi::Slice;
   }
 
-  void add_constraints(casadi::Opti & opti, const casadi::MX & X, const casadi::MX & U)
+  void add_constraints(casadi::Opti &opti, const casadi::MX &X, const casadi::MX &U)
   {
     using namespace casadi;
     using Sl = casadi::Slice;
