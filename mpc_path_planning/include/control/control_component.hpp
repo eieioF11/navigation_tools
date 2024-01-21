@@ -50,8 +50,13 @@ public:
       this->create_publisher<std_msgs::msg::Empty>("mpc_path_planning/end", rclcpp::QoS(10).reliable());
     cmd_vel_pub_ =
       this->create_publisher<geometry_msgs::msg::Twist>(CMD_VEL_TOPIC, rclcpp::QoS(10));
+    linear_vel_pub_ =
+      this->create_publisher<std_msgs::msg::Float32>("mpc_path_planning/linear_vel", rclcpp::QoS(5));
+    angular_vel_pub_ =
+      this->create_publisher<std_msgs::msg::Float32>("mpc_path_planning/angular_vel", rclcpp::QoS(5));
     perfomance_pub_ =
       this->create_publisher<std_msgs::msg::Float32>("mpc_path_planning/control_time", rclcpp::QoS(5));
+    cmd_vel_pub_->publish(stop());
     // subscriber
     opti_path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
       OPTIPATH_TOPIC, rclcpp::QoS(10).reliable(),
@@ -70,6 +75,8 @@ public:
       }
       auto map_to_base_link = lookup_transform(tf_buffer_, ROBOT_FRAME, MAP_FRAME);
       auto now_time = this->get_clock()->now();
+      double vel=0.;
+      double angular=0.;
       if (map_to_base_link && opti_path_ && opti_twists_) {
         Pathd opti_path = make_path(opti_path_.value(), opti_twists_.value());
         Pose3d base_link_pose = make_pose(map_to_base_link.value().transform);
@@ -117,8 +124,8 @@ public:
         double target_dist = Vector3d::distance(target_pose.position, base_link_pose.position);
         double target_diff_angle =
           std::abs(target_pose.orientation.get_rpy().z - base_link_pose.orientation.get_rpy().z);
-        double vel = cmd_vel.linear.norm();
-        double angular = cmd_vel.angular.norm();
+        vel = cmd_vel.linear.norm();
+        angular = cmd_vel.angular.norm();
 #if defined(CONTROL_DEBUG_OUTPUT)
         std::cout << "target_dist:" << target_dist << std::endl;
         std::cout << "target_diff_angle:" << target_diff_angle << std::endl;
@@ -147,8 +154,9 @@ public:
         // std::cout << "now_vel_:" << now_vel_ << std::endl;
 #endif
         cmd_vel_pub_->publish(make_geometry_twist(cmd_vel));
-      } else
-        cmd_vel_pub_->publish(stop());
+      }
+      linear_vel_pub_->publish(make_float32(vel));
+      angular_vel_pub_->publish(make_float32(angular));
       perfomance_pub_->publish(make_float32((now_time - pre_control_time_).seconds() * 1000));
       pre_control_time_ = this->get_clock()->now();
     });
@@ -176,8 +184,9 @@ private:
   // publisher
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_pub_;
   rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr end_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr linear_vel_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr angular_vel_pub_;
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr perfomance_pub_;
-  ;
   // twist
   Twistd now_vel_;
   // pose

@@ -16,6 +16,9 @@
 #include <nav_msgs/msg/path.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <std_msgs/msg/empty.hpp>
+#include <sensor_msgs/msg/laser_scan.hpp>
+#include <sensor_msgs/msg/point_cloud.hpp>
+#include <sensor_msgs/point_cloud_conversion.hpp>
 // opencv
 #include <opencv2/opencv.hpp>
 
@@ -43,7 +46,7 @@
 #define NON_HOLONOMIC
 // デバック関連設定
 #define PLANNING_DEBUG_OUTPUT
-// #define CONTROL_DEBUG_OUTPUT
+#define CONTROL_DEBUG_OUTPUT
 //******************************************************************************
 using namespace common_lib;
 using namespace std::chrono_literals;
@@ -84,6 +87,8 @@ public:
     mpc_config_.max_acc = param<double>("mpc_path_planning.mpc.max_acc", 0.98);        // [m/s^2]
     mpc_config_.max_angular_acc =
         param<double>("mpc_path_planning.mpc.max_angular_acc", 1.0); // [rad/s^2]
+    double xy_vel_time_constant = param<double>("mpc_path_planning.mpc.xy_vel_time_constant", 0.0);
+    double theta_vel_time_constant = param<double>("mpc_path_planning.mpc.theta_vel_time_constant", 0.0);
     std::vector<double> STATE_WEIGHT = param<std::vector<double>>(
         "mpc_path_planning.mpc.weight.state", std::vector<double>{10, 10, 6, 200, 200, 60});
     std::vector<double> FINAL_STATE_WEIGHT = param<std::vector<double>>(
@@ -99,9 +104,8 @@ public:
     mpc_config_.ref_state_weight << REF_STATE_WEIGHT[0], REF_STATE_WEIGHT[1],
         REF_STATE_WEIGHT[2], REF_STATE_WEIGHT[3], REF_STATE_WEIGHT[4], REF_STATE_WEIGHT[5];
     mpc_config_.control_weight << CONTROL_WEIGHT[0], CONTROL_WEIGHT[1], CONTROL_WEIGHT[2];
-    mpc_config_.lpf_xy_gain = mpc_config_.dt / (mpc_config_.dt + mpc_config_.xy_vel_time_constant);
-    mpc_config_.lpf_theta_gain =
-        mpc_config_.dt / (mpc_config_.dt + mpc_config_.theta_vel_time_constant);
+    mpc_config_.lpf_xy_gain = mpc_config_.dt / (mpc_config_.dt + xy_vel_time_constant);
+    mpc_config_.lpf_theta_gain = mpc_config_.dt / (mpc_config_.dt + theta_vel_time_constant);
     std::string IPOPT_SB = param<std::string>("mpc_path_planning.mpc.ipopt.sb", "yes");
     std::string IPOPT_LINEAR_SOLVER = param<std::string>(
         "mpc_path_planning.mpc.ipopt.linear_solver", "mumps"); // mumpsは遅い ma27はHSLライブラリ必要
@@ -122,7 +126,7 @@ public:
           {"ipopt.print_level", 0},
           {"print_time", false},
           {"ipopt.warm_start_init_point", "yes"},
-          // {"ipopt.hessian_approximation", "limited-memory"},//使えてない
+          // {"ipopt.hessian_approximation", "limited-memory"},//ヘッシアン近似（準ニュートン法）を行い反復一回あたりの計算は早くなる
           {"ipopt.fixed_variable_treatment", "make_constraint"},
           {"expand", true},
       };
@@ -316,21 +320,25 @@ private:
     cv::Mat img = make_cv_mat(*map_msg_);
     cv::Mat dist_img, convert_dist_img;
     // 二値化
-    cv::threshold(img, img, 250, 255, cv::THRESH_BINARY);
+    // cv::threshold(img, img, 250, 255, cv::THRESH_BINARY);// unknown 255
+    cv::threshold(img, img, 20, 255, cv::THRESH_BINARY); // unknown 0
     // 距離場計算
     cv::distanceTransform(img, dist_img, CV_DIST_L2, 5);
     dist_img.convertTo(convert_dist_img, CV_32FC1, 1.0);
     double min, max;
     cv::Point min_p, max_p;
     cv::minMaxLoc(convert_dist_img, &min, &max, &min_p, &max_p);
-    for (size_t y = 0; y < dist_map_msg_.info.height; y++) {
-      for (size_t x = 0; x < dist_map_msg_.info.width; x++) {
+    for (size_t y = 0; y < dist_map_msg_.info.height; y++)
+    {
+      for (size_t x = 0; x < dist_map_msg_.info.width; x++)
+      {
         float pixel =
-          transform_range<float>(max - convert_dist_img.at<float>(y, x), min, max, 0.0, 100.0);
-        if (pixel > 100.0) pixel = 100.0;
-        if (pixel < 0.0) pixel = 0.0;
-        double index = dist_map_msg_.info.width * (dist_map_msg_.info.height - y - 1) + x;
-        dist_map_msg_.data[index] = static_cast<int8_t>(pixel);
+            transform_range<float>(max - convert_dist_img.at<float>(y, x), min, max, 0.0, 100.0);
+        if (pixel >= 100.0)
+          pixel = 100.0;
+        if (pixel < 0.0)
+          pixel = 0.0;
+        dist_map_msg_.data[dist_map_msg_.info.width * (dist_map_msg_.info.height - y - 1) + x] = static_cast<int8_t>(pixel);
       }
     }
     dist_map_pub_->publish(dist_map_msg_);
@@ -345,18 +353,14 @@ private:
   // MPU追加制約
   void init_parameter() {}
 
-  void add_cost_function(casadi::MX &cost, const casadi::MX &X, const casadi::MX &U)
-  {
-    using namespace casadi;
-    using Sl = casadi::Slice;
-  }
+  void add_cost_function(casadi::MX &cost, const casadi::MX &X, const casadi::MX &U) {}
 
   void add_constraints(casadi::Opti &opti, const casadi::MX &X, const casadi::MX &U)
   {
     using namespace casadi;
     using Sl = casadi::Slice;
 
-    const double robot_colision_size = 0.75;
+    const double robot_colision_size = 0.0;
     // for (size_t i = 1; i < X.size2(); i++) {//get_guard_circle_subject(const casadi::MX &xy, const casadi::MX &center, const casadi::MX &size, std::string comp)
     //   // test
     //   opti.subject_to(get_guard_circle_subject(
