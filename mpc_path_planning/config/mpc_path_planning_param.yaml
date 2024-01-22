@@ -5,6 +5,7 @@ mpc_path_planning_node:
         map:         "/map"
         target:      "/goal_pose"
         grid_path:   "mpc_path_planning/grid_path"
+        init_path:   "mpc_path_planning/init_path"
         opti_path:   "mpc_path_planning/opti_path"
         opti_twists: "mpc_path_planning/twists"
       tf_frame:
@@ -15,26 +16,29 @@ mpc_path_planning_node:
         dt:              0.1 #[s] 0.135
         horizon_time:    5.0
         # pos_error:      0.035 #0.015 # 0.01
-        pos_error:       1.2 #[m]
+        pos_error:       0.7 #[m]
         # ロボット制約
         max_vel:         1.0  #[m/s]
         max_angular:     2.84 #[rad/s] 2.84
-        max_acc:         10.0  #[m/s^s] 1.1 4.9 3.9 0.98
+        max_acc:         2.9  #[m/s^s] 1.1 4.9 3.9 0.98
         max_angular_acc: 4.9  #[rad/s^s] 1.0
         # モデルパラメータ
-        xy_vel_time_constant:    0.05
-        theta_vel_time_constant: 0.05
+        xy_vel_time_constant:    0.1
+        theta_vel_time_constant: 0.1
         #重み[vx,vy,w,x,y,x]
         weight:
-          state:       [0.5, 0.0, 0.5, 10.0, 10.0, 0.5]    #ステートコストの重み [10.0, 0.0, 10.0, 800.0, 800.0, 10.0]
-          final_state: [0.5, 0.0, 0.5, 60.0, 60.0, 1.0]    #終端コストの重み     [10.0, 0.0, 10.0, 800.0, 800.0, 10.0]
-          ref_state:   [0.0, 0.0, 0.0, 100.0, 100.0, 1.0] #初期経路(grid_path)とのエラーコストの重み
-          control:     [1.0, 0.0, 1.0]                     #制御量コストの重み
+          state:       [3.0, 0.0, 0.5, 10.0, 10.0, 0.1]    #ステートコストの重み [10.0, 0.0, 10.0, 800.0, 800.0, 10.0]
+          final_state: [0.5, 0.0, 0.5, 50.0, 50.0, 50.0]    #終端コストの重み     [10.0, 0.0, 10.0, 800.0, 800.0, 10.0]
+          ref_state:   [0.0, 0.0, 0.0, 500.0, 500.0, 0.7] #初期経路(grid_path)とのエラーコストの重み
+          control:     [5.0, 0.0, 5.0]                     #制御量コストの重み
+        warm_start:
+          diff_target_norm: 0.01
+          latest_gpl_norm: 0.1
         ipopt:  #ソルバー設定
           sb: "yes"                # コンソールにヘッダを出力しない
           linear_solver: "ma27"    # mumpsは遅い ma27はHSLライブラリ必要 (mumps:40msくらい,ma27:10msくらい)
           max_iter: 500            #最大反復回数 def 500
-          acceptable_tol: 0.00001  #収束許容値 def 0.000001
+          acceptable_tol: 0.000001  #収束許容値 def 0.000001
           compl_inf_tol:  0.0001   #相補性条件の「許容」しきい値 def 0.0001
         grid_path_planner: "extension_a_star" #dijkstra,dijkstra_dist_map,a_star,extension_a_star,wave_propagation,wave_propagation_dist_map
 
@@ -48,7 +52,7 @@ control_node:
       tf_frame:
         map_frame:   "map"
         robot_frame: "base_link"
-      control_period: 0.005 #[s]
+      control_period: 0.004 #[s]
       goal:
         pos_range:         0.05  #[m]
         angle_range:       0.5   #[deg]

@@ -46,7 +46,7 @@
 #define NON_HOLONOMIC
 // デバック関連設定
 #define PLANNING_DEBUG_OUTPUT
-#define CONTROL_DEBUG_OUTPUT
+// #define CONTROL_DEBUG_OUTPUT
 //******************************************************************************
 using namespace common_lib;
 using namespace std::chrono_literals;
@@ -66,6 +66,8 @@ public:
     std::string MAP_TOPIC = param<std::string>("mpc_path_planning.topic_name.map", "/map");
     std::string TARGET_TOPIC =
         param<std::string>("mpc_path_planning.topic_name.target", "/goal_pose");
+    std::string INITPATH_TOPIC =
+        param<std::string>("mpc_path_planning.topic_name.init_path", "mpc_path_planning/init_path");
     std::string GRIDPATH_TOPIC =
         param<std::string>("mpc_path_planning.topic_name.grid_path", "mpc_path_planning/grid_path");
     std::string OPTIPATH_TOPIC =
@@ -106,6 +108,8 @@ public:
     mpc_config_.control_weight << CONTROL_WEIGHT[0], CONTROL_WEIGHT[1], CONTROL_WEIGHT[2];
     mpc_config_.lpf_xy_gain = mpc_config_.dt / (mpc_config_.dt + xy_vel_time_constant);
     mpc_config_.lpf_theta_gain = mpc_config_.dt / (mpc_config_.dt + theta_vel_time_constant);
+    mpc_config_.warm_start_d_target_norm = param<double>("mpc_path_planning.mpc.warm_start.diff_target_norm", 0.1);
+    mpc_config_.warm_start_d_latest_gpl_norm = param<double>("mpc_path_planning.mpc.warm_start.latest_gpl_norm", 0.5);
     std::string IPOPT_SB = param<std::string>("mpc_path_planning.mpc.ipopt.sb", "yes");
     std::string IPOPT_LINEAR_SOLVER = param<std::string>(
         "mpc_path_planning.mpc.ipopt.linear_solver", "mumps"); // mumpsは遅い ma27はHSLライブラリ必要
@@ -177,6 +181,7 @@ public:
 #endif
     planner_->init_solver();
     // publisher
+    init_path_pub_ = this->create_publisher<nav_msgs::msg::Path>(INITPATH_TOPIC, rclcpp::QoS(10));
     grid_path_pub_ = this->create_publisher<nav_msgs::msg::Path>(GRIDPATH_TOPIC, rclcpp::QoS(10));
     opti_path_pub_ = this->create_publisher<nav_msgs::msg::Path>(OPTIPATH_TOPIC, rclcpp::QoS(10));
     opti_twists_pub_ = this->create_publisher<extension_msgs::msg::TwistMultiArray>(
@@ -249,9 +254,11 @@ public:
             // path planning
             Pathd opti_path = planner_->path_planning(start, end);
             Pathd grid_path = planner_->get_grid_path();
+            Pathd init_path = planner_->get_init_path();
             // publish grid path
             grid_path_pub_->publish(
               make_nav_path(make_header(MAP_FRAME, rclcpp::Clock().now()), grid_path));
+            init_path_pub_->publish(make_nav_path(make_header(MAP_FRAME, rclcpp::Clock().now()), init_path));
             if (planner_->optimization()) {  //最適化成功
               // publish opti path
               auto [o_ppath, o_vpath, o_apath] =
@@ -288,6 +295,7 @@ private:
   rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr end_sub_;
   // publisher
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr grid_path_pub_;
+  rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr init_path_pub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr opti_path_pub_;
   rclcpp::Publisher<extension_msgs::msg::TwistMultiArray>::SharedPtr opti_twists_pub_;
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr perfomance_pub_;

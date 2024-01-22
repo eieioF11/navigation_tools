@@ -55,6 +55,8 @@ public:
     angular_vel_pub_ =
       this->create_publisher<std_msgs::msg::Float32>("mpc_path_planning/angular_vel", rclcpp::QoS(5));
     perfomance_pub_ =
+      this->create_publisher<std_msgs::msg::Float32>("mpc_path_planning/control_period", rclcpp::QoS(5));
+    control_time_pub_ =
       this->create_publisher<std_msgs::msg::Float32>("mpc_path_planning/control_time", rclcpp::QoS(5));
     cmd_vel_pub_->publish(stop());
     // subscriber
@@ -88,8 +90,10 @@ public:
         Twistd cmd_vel = make_twist(stop());
         auto duration = now_time - opti_twists_.value().header.stamp;
         double control_time = duration.seconds();
+        double dt = CONTROL_PERIOD;
         if (control_time < 0) control_time = 0;
-        size_t horizon = std::round(control_time / CONTROL_PERIOD);
+        size_t horizon = std::round(control_time / dt);
+        control_time_pub_->publish(make_float32(control_time * 1000));
         if (horizon < opti_path.points.size()) {
           auto & target_twist0 = opti_path.points[horizon].velocity;
           auto nhorizon = horizon;
@@ -100,7 +104,7 @@ public:
           std::cout << "target_twist0:" << target_twist0 << std::endl;
           std::cout << "target_twist1:" << target_twist1 << std::endl;
 #endif
-          double t = (control_time - CONTROL_PERIOD * horizon) / CONTROL_PERIOD;
+          double t = (control_time - dt * horizon) / dt;
           if (t < 0) t = 0;
           Vector3d v0 = {target_twist0.linear.x, target_twist0.linear.y, target_twist0.angular.z};
           Vector3d v1 = {target_twist1.linear.x, target_twist1.linear.y, target_twist1.angular.z};
@@ -187,6 +191,7 @@ private:
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr linear_vel_pub_;
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr angular_vel_pub_;
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr perfomance_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr control_time_pub_;
   // twist
   Twistd now_vel_;
   // pose
