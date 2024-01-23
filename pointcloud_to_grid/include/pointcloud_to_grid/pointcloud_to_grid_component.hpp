@@ -59,7 +59,7 @@ public:
     // init
     initialization_ = true;
     // publisher
-    map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>(MAP_TOPIC, rclcpp::QoS(10));
+    map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>(MAP_TOPIC, rclcpp::QoS(10).reliable());
     debug_cloud_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
       "pointcloud_to_grid/debug_points", rclcpp::QoS(10));
     // subscriber
