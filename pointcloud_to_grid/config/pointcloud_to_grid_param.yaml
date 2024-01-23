@@ -10,7 +10,7 @@ pointcloud_to_grid_node:
       add_cell: true
       filter:
         voxelgrid_size: 0.01
-        z_max: 2.0
+        z_max: 1.0
         z_min: 0.1
       grid_map_info:
         resolution: 0.1 #[m] def 0.05

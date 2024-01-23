@@ -35,6 +35,7 @@ public:
     ROBOT_FRAME = param<std::string>("control.tf_frame.robot_frame", "base_link");
     // setup
     CONTROL_PERIOD = param<double>("control.control_period", 0.001);
+    MPC_DT = param<double>("control.mpc_dt", 0.001);
     // 収束判定
     GOAL_POS_RANGE = param<double>("control.goal.pos_range", 0.01);
     GOAL_ANGLE_RANGE = unit_cast<unit::angle::rad>(param<double>("control.goal.angle_range", 0.1));
@@ -46,18 +47,18 @@ public:
     opti_path_ = std::nullopt;
     pre_control_time_ = this->get_clock()->now();
     // publisher
-    end_pub_ =
-      this->create_publisher<std_msgs::msg::Empty>("mpc_path_planning/end", rclcpp::QoS(10).reliable());
+    end_pub_ = this->create_publisher<std_msgs::msg::Empty>(
+      "mpc_path_planning/end", rclcpp::QoS(10).reliable());
     cmd_vel_pub_ =
-      this->create_publisher<geometry_msgs::msg::Twist>(CMD_VEL_TOPIC, rclcpp::QoS(10));
-    linear_vel_pub_ =
-      this->create_publisher<std_msgs::msg::Float32>("mpc_path_planning/linear_vel", rclcpp::QoS(5));
-    angular_vel_pub_ =
-      this->create_publisher<std_msgs::msg::Float32>("mpc_path_planning/angular_vel", rclcpp::QoS(5));
-    perfomance_pub_ =
-      this->create_publisher<std_msgs::msg::Float32>("mpc_path_planning/control_period", rclcpp::QoS(5));
-    control_time_pub_ =
-      this->create_publisher<std_msgs::msg::Float32>("mpc_path_planning/control_time", rclcpp::QoS(5));
+      this->create_publisher<geometry_msgs::msg::Twist>(CMD_VEL_TOPIC, rclcpp::QoS(1));
+    linear_vel_pub_ = this->create_publisher<std_msgs::msg::Float32>(
+      "mpc_path_planning/linear_vel", rclcpp::QoS(5));
+    angular_vel_pub_ = this->create_publisher<std_msgs::msg::Float32>(
+      "mpc_path_planning/angular_vel", rclcpp::QoS(5));
+    perfomance_pub_ = this->create_publisher<std_msgs::msg::Float32>(
+      "mpc_path_planning/control_period", rclcpp::QoS(5));
+    control_time_pub_ = this->create_publisher<std_msgs::msg::Float32>(
+      "mpc_path_planning/control_time", rclcpp::QoS(5));
     cmd_vel_pub_->publish(stop());
     // subscriber
     opti_path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
@@ -77,38 +78,37 @@ public:
       }
       auto map_to_base_link = lookup_transform(tf_buffer_, ROBOT_FRAME, MAP_FRAME);
       auto now_time = this->get_clock()->now();
-      double vel=0.;
-      double angular=0.;
+      double vel = 0.;
+      double angular = 0.;
       if (map_to_base_link && opti_path_ && opti_twists_) {
         Pathd opti_path = make_path(opti_path_.value(), opti_twists_.value());
         Pose3d base_link_pose = make_pose(map_to_base_link.value().transform);
         RCLCPP_INFO_CHANGE(0, this->get_logger(), "get opti_path");
 #if defined(CONTROL_DEBUG_OUTPUT)
-          std::cout << "----------------------------------------------------------" << std::endl;
+        std::cout << "----------------------------------------------------------" << std::endl;
 #endif
         // 制御出力
         Twistd cmd_vel = make_twist(stop());
         auto duration = now_time - opti_twists_.value().header.stamp;
         double control_time = duration.seconds();
-        double dt = CONTROL_PERIOD;
         if (control_time < 0) control_time = 0;
-        size_t horizon = std::round(control_time / dt);
+        size_t n0 = std::round(control_time / MPC_DT);
         control_time_pub_->publish(make_float32(control_time * 1000));
-        if (horizon < opti_path.points.size()) {
-          auto & target_twist0 = opti_path.points[horizon].velocity;
-          auto nhorizon = horizon;
-          if (horizon + 1 < opti_path.points.size()) nhorizon += 1;
-          auto & target_twist1 = opti_path.points[nhorizon].velocity;
+        if (n0 < opti_path.points.size()) {
+          auto & target_twist0 = opti_path.points[n0].velocity;
+          auto n1 = n0;
+          if (n0 + 1 < opti_path.points.size()) n1 += 1;
+          auto & target_twist1 = opti_path.points[n1].velocity;
 #if defined(CONTROL_DEBUG_OUTPUT)
           std::cout << "control_time:" << control_time << std::endl;
           std::cout << "target_twist0:" << target_twist0 << std::endl;
           std::cout << "target_twist1:" << target_twist1 << std::endl;
 #endif
-          double t = (control_time - dt * horizon) / dt;
-          if (t < 0) t = 0;
           Vector3d v0 = {target_twist0.linear.x, target_twist0.linear.y, target_twist0.angular.z};
           Vector3d v1 = {target_twist1.linear.x, target_twist1.linear.y, target_twist1.angular.z};
-          Vector3d v = v0 + (v1 - v0) * t;
+          double t = (control_time - MPC_DT * n0);
+          if (t < 0) t = 0;
+          Vector3d v = v0 + ((v1 - v0) / MPC_DT) * t;  // 線形補間
 #if defined(CONTROL_DEBUG_OUTPUT)
           std::cout << "t:" << t << std::endl;
           std::cout << "v:" << v << std::endl;
@@ -158,7 +158,8 @@ public:
         // std::cout << "now_vel_:" << now_vel_ << std::endl;
 #endif
         cmd_vel_pub_->publish(make_geometry_twist(cmd_vel));
-      }
+      } else
+        cmd_vel_pub_->publish(stop());
       linear_vel_pub_->publish(make_float32(vel));
       angular_vel_pub_->publish(make_float32(angular));
       perfomance_pub_->publish(make_float32((now_time - pre_control_time_).seconds() * 1000));
@@ -171,6 +172,7 @@ private:
   std::string MAP_FRAME;
   std::string ROBOT_FRAME;
   double CONTROL_PERIOD;
+  double MPC_DT;
   double GOAL_POS_RANGE;
   double GOAL_ANGLE_RANGE;
   double GOAL_MIN_VEL_RANGE;
@@ -196,7 +198,7 @@ private:
   Twistd now_vel_;
   // pose
   Pose3d old_base_link_pose_;
-  //path
+  //path2.9
   std::optional<nav_msgs::msg::Path> opti_path_;
   std::optional<extension_msgs::msg::TwistMultiArray> opti_twists_;
 
