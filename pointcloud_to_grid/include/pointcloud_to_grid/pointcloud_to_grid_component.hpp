@@ -45,6 +45,7 @@ public:
     // frame
     MAP_FRAME = param<std::string>("pointcloud_to_grid.tf_frame.map_frame", "map");
     // setup
+    ADD_CELL = param<bool>("pointcloud_to_grid.add_cell", false);
     VOXELGRID_SIZE = param<double>("pointcloud_to_grid.filter.voxelgrid_size", 0.04);
     Z_MAX = param<double>("pointcloud_to_grid.filter.z_max", 1.0);
     Z_MIN = param<double>("pointcloud_to_grid.filter.z_min", 0.0);
@@ -57,9 +58,9 @@ public:
     gmap.info.origin.position.y = -0.5 * height;
     gmap.resize(gmap.info.width, gmap.info.height);
     // init
-    initialization_ = true;
     // publisher
-    map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>(MAP_TOPIC, rclcpp::QoS(10).reliable());
+    map_pub_ =
+      this->create_publisher<nav_msgs::msg::OccupancyGrid>(MAP_TOPIC, rclcpp::QoS(10).reliable());
     debug_cloud_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
       "pointcloud_to_grid/debug_points", rclcpp::QoS(10));
     // subscriber
@@ -89,11 +90,20 @@ public:
         debug_cloud_pub_->publish(
           make_ros_pointcloud2(make_header(MAP_FRAME, get_cloud.header.stamp), cut_cloud));
 #pragma omp parallel for
+        for (auto & cell : gmap.data) cell = 0;
+#pragma omp parallel for
         for (const auto point : cut_cloud.points) {
           Vector2d p = gmap.get_grid_pos(
             conversion_vector2<pcl::PointXYZ, Vector2d>(point));  //グリッド上の位置取得
           if (gmap.is_contain(p))  //その点がgmap.info.widthとgmap.info.heightの範囲内かどうか
-            gmap.set(p, GridMap::WALL_VALUE);
+            if (!gmap.is_wall(gmap.at(p))) gmap.set(p, GridMap::WALL_VALUE);
+          if (ADD_CELL) {
+            for (size_t i = 0; i < 8; i++) {
+              Vector2d np = p + nb[i];
+              if (gmap.is_contain(np))  //その点がgmap.info.widthとgmap.info.heightの範囲内かどうか
+                if (!gmap.is_wall(gmap.at(np))) gmap.set(np, GridMap::WALL_VALUE);
+            }
+          }
         }
         map_pub_->publish(make_nav_gridmap(make_header(MAP_FRAME, get_cloud.header.stamp), gmap));
         double proc_time = (rclcpp::Clock().now() - start_time).seconds() * 1000.0;
@@ -102,10 +112,11 @@ public:
   }
 
 private:
-  bool initialization_;
+  bool ADD_CELL;
   double VOXELGRID_SIZE;
   double Z_MAX;
   double Z_MIN;
+  const std::array<Vector2d, 8> nb = {Vector2d{1, 0}, {0, 1}, {-1, 0}, {0, -1}, {1, 1}, {-1, 1}, {-1, -1}, {1, -1}};
   // param
   std::string MAP_FRAME;
   // tf
