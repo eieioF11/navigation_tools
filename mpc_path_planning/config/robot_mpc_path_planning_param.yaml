@@ -19,12 +19,10 @@ mpc_path_planning_node:
         # pos_error:      0.035 #0.015 # 0.01
         pos_error:       1.0 #[m] 0.8
         # ロボット制約
-        min_vel:         -0.6  #[m/s]
-        max_vel:         0.6   #[m/s]
-        min_angular:     -2.84 #[rad/s] 2.84
-        max_angular:     2.84  #[rad/s] 2.84
-        max_acc:         3.9   #[m/s^s] 1.1 4.9 3.9 0.98 2.9
-        max_angular_acc: 4.9   #[rad/s^s] 1.0 4.9
+        max_vel:         0.6  #[m/s]
+        max_angular:     1.5  #[rad/s] 2.84
+        max_acc:         3.9  #[m/s^s] 1.1 4.9 3.9 0.98 2.9
+        max_angular_acc: 4.9  #[rad/s^s] 1.0 4.9
         # モデルパラメータ
         xy_vel_time_constant:    0.0
         theta_vel_time_constant: 0.0

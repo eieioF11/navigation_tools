@@ -50,7 +50,7 @@ public:
     end_pub_ = this->create_publisher<std_msgs::msg::Empty>(
       "mpc_path_planning/end", rclcpp::QoS(10).reliable());
     cmd_vel_pub_ =
-      this->create_publisher<geometry_msgs::msg::Twist>(CMD_VEL_TOPIC, rclcpp::QoS(1));
+      this->create_publisher<geometry_msgs::msg::Twist>(CMD_VEL_TOPIC, rclcpp::QoS(10));
     linear_vel_pub_ = this->create_publisher<std_msgs::msg::Float32>(
       "mpc_path_planning/linear_vel", rclcpp::QoS(5));
     angular_vel_pub_ = this->create_publisher<std_msgs::msg::Float32>(
@@ -100,6 +100,7 @@ public:
           if (n0 + 1 < opti_path.points.size()) n1 += 1;
           auto & target_twist1 = opti_path.points[n1].velocity;
 #if defined(CONTROL_DEBUG_OUTPUT)
+          std::cout << "n0:" << n0 << " n1:" << n1 << std::endl;
           std::cout << "control_time:" << control_time << std::endl;
           std::cout << "target_twist0:" << target_twist0 << std::endl;
           std::cout << "target_twist1:" << target_twist1 << std::endl;
@@ -153,7 +154,6 @@ public:
         }
 #if defined(CONTROL_DEBUG_OUTPUT)
         std::cout << "control_time:" << control_time << std::endl;
-        std::cout << "horizon:" << horizon << std::endl;
         std::cout << "cmd_vel:" << cmd_vel << std::endl;
         // std::cout << "now_vel_:" << now_vel_ << std::endl;
 #endif
@@ -198,7 +198,7 @@ private:
   Twistd now_vel_;
   // pose
   Pose3d old_base_link_pose_;
-  //path2.9
+  //path
   std::optional<nav_msgs::msg::Path> opti_path_;
   std::optional<extension_msgs::msg::TwistMultiArray> opti_twists_;
 
