@@ -83,9 +83,10 @@ public:
     double HORIZON_TIME = param<double>("mpc_path_planning.mpc.horizon_time", 7.0);
     mpc_config_.horizon = static_cast<size_t>(HORIZON_TIME / mpc_config_.dt);
     mpc_config_.pos_error = param<double>("mpc_path_planning.mpc.pos_error", 100.0);
-    mpc_config_.min_vel = param<double>("mpc_path_planning.mpc.min_vel", -1.0);          // [m/s]
-    mpc_config_.min_angular = param<double>("mpc_path_planning.mpc.min_angular", -1.0);  // [rad/s]
+    mpc_config_.forward_only = param<bool>("mpc_path_planning.mpc.forward_only", false);
+    mpc_config_.min_vel = param<double>("mpc_path_planning.mpc.min_vel", 0.0);          // [m/s]
     mpc_config_.max_vel = param<double>("mpc_path_planning.mpc.max_vel", 1.0);          // [m/s]
+    mpc_config_.min_angular = param<double>("mpc_path_planning.mpc.min_angular", 0.0);  // [rad/s]
     mpc_config_.max_angular = param<double>("mpc_path_planning.mpc.max_angular", 1.0);  // [rad/s]
     mpc_config_.max_acc = param<double>("mpc_path_planning.mpc.max_acc", 0.98);         // [m/s^2]
     mpc_config_.max_angular_acc =
