@@ -21,8 +21,8 @@ mpc_path_planning_node:
         # ロボット制約
         forward_only: false
         min_vel:         0.0   #[m/s]  最小速度制限(0~)
-        max_vel:         0.6   #[m/s]
-        min_angular:     0.12   #[rad/s] 最小速度制限(0~)
+        max_vel:         0.0   #[m/s]
+        min_angular:     0.12  #[rad/s] 最小速度制限(0~)
         max_angular:     2.84  #[rad/s] 2.84
         max_acc:         2.9   #[m/s^s] 1.1 4.9 3.9 0.98 2.9
         max_angular_acc: 4.9   #[rad/s^s] 1.0 4.9
