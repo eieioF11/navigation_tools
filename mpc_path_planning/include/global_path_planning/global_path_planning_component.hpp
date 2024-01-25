@@ -36,7 +36,7 @@
 #define _ENABLE_ATOMIC_ALIGNMENT_FIX
 //******************************************************************************
 // デバック関連設定
-#define DEBUG_OUTPUT
+#define MAP_GEN_DEBUG_OUTPUT
 //******************************************************************************
 using namespace common_lib;
 using namespace std::chrono_literals;
@@ -180,7 +180,7 @@ private:
     dist_map_msg_.header = map_msg_->header;
     dist_map_msg_.info = map_msg_->info;
     dist_map_msg_.data.resize(dist_map_msg_.info.width * dist_map_msg_.info.height);
-    Pose3d origin = make_pose(map_msg_->info.origin);
+    Pose3d origin = make_pose(dist_map_msg_.info.origin);
     cv::Mat img = make_cv_mat(*map_msg_);
     cv::Mat dist_img, convert_dist_img;
     // 二値化
@@ -206,7 +206,7 @@ private:
 #if defined(MAP_GEN_DEBUG_OUTPUT)
     double calc_time = (rclcpp::Clock().now() - start_create_distmap_time_).seconds();
     std::cout << "calc_time:" << calc_time << std::endl;
-    l std::cout << "calc distance map end!" << std::endl;
+    std::cout << "calc distance map end!" << std::endl;
 #endif
     gen_distance_map_ = true;
   }

@@ -109,8 +109,9 @@ public:
     mpc_config_.ref_state_weight << REF_STATE_WEIGHT[0], REF_STATE_WEIGHT[1], REF_STATE_WEIGHT[2],
       REF_STATE_WEIGHT[3], REF_STATE_WEIGHT[4], REF_STATE_WEIGHT[5];
     mpc_config_.control_weight << CONTROL_WEIGHT[0], CONTROL_WEIGHT[1], CONTROL_WEIGHT[2];
-    mpc_config_.lpf_xy_gain = mpc_config_.dt / (mpc_config_.dt + xy_vel_time_constant);
-    mpc_config_.lpf_theta_gain = mpc_config_.dt / (mpc_config_.dt + theta_vel_time_constant);
+    // mpc_config_.lpf_xy_gain = mpc_config_.dt / (mpc_config_.dt + xy_vel_time_constant);
+    // mpc_config_.lpf_theta_gain = mpc_config_.dt / (mpc_config_.dt + theta_vel_time_constant);
+    MPCPathPlanner::calc_lpf_gain(mpc_config_, xy_vel_time_constant, theta_vel_time_constant);
     mpc_config_.warm_start_d_target_norm =
       param<double>("mpc_path_planning.mpc.warm_start.diff_target_norm", 0.1);
     mpc_config_.warm_start_d_latest_gpl_norm =

@@ -29,6 +29,8 @@ public:
       param<std::string>("control.topic_name.opti_path", "mpc_path_planning/opti_path");
     std::string OPTITWISTS_TOPIC =
       param<std::string>("control.topic_name.opti_twists", "mpc_path_planning/twists");
+    std::string TARGET_TOPIC =
+      param<std::string>("mpc_path_planning.topic_name.target", "/goal_pose");
     std::string CMD_VEL_TOPIC = param<std::string>("control.topic_name.cmd_vel", "/cmd_vel");
     // frame
     MAP_FRAME = param<std::string>("control.tf_frame.map_frame", "map");
@@ -61,6 +63,11 @@ public:
       "mpc_path_planning/control_time", rclcpp::QoS(5));
     cmd_vel_pub_->publish(stop());
     // subscriber
+    goal_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
+      TARGET_TOPIC, rclcpp::QoS(10), [&](geometry_msgs::msg::PoseStamped::SharedPtr msg) {
+        target_pose_ = make_pose(msg->pose);
+        cmd_vel_pub_->publish(stop());
+      });
     opti_path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
       OPTIPATH_TOPIC, rclcpp::QoS(10).reliable(),
       [&](const nav_msgs::msg::Path::SharedPtr msg) { opti_path_ = *msg; });
@@ -125,10 +132,10 @@ public:
           cmd_vel.linear.y = v_xy.y;
           cmd_vel.angular.z = v.z;
         }
-        Pose3d target_pose = opti_path.points.back().pose;
-        double target_dist = Vector3d::distance(target_pose.position, base_link_pose.position);
+        // Pose3d target_pose = opti_path.points.back().pose;
+        double target_dist = Vector3d::distance(target_pose_.position, base_link_pose.position);
         double target_diff_angle =
-          std::abs(target_pose.orientation.get_rpy().z - base_link_pose.orientation.get_rpy().z);
+          std::abs(target_pose_.orientation.get_rpy().z - base_link_pose.orientation.get_rpy().z);
         vel = cmd_vel.linear.norm();
         angular = cmd_vel.angular.norm();
 #if defined(CONTROL_DEBUG_OUTPUT)
@@ -139,7 +146,8 @@ public:
 #endif
         // ゴール判定
         if (target_dist < GOAL_POS_RANGE) {
-          if (target_diff_angle < GOAL_ANGLE_RANGE) {
+          if (target_diff_angle < GOAL_ANGLE_RANGE) {              opti_twists_ = std::nullopt;
+              opti_path_ = std::nullopt;
             if (
               approx_zero(vel, GOAL_MIN_VEL_RANGE) &&
               approx_zero(angular, GOAL_MIN_ANGULAR_RANGE)) {
@@ -186,6 +194,7 @@ private:
   rclcpp::Time pre_control_time_;
   // subscriber
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr opti_path_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr goal_sub_;
   rclcpp::Subscription<extension_msgs::msg::TwistMultiArray>::SharedPtr opti_twists_sub_;
   // publisher
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_pub_;
@@ -197,7 +206,7 @@ private:
   // twist
   Twistd now_vel_;
   // pose
-  Pose3d old_base_link_pose_;
+  Pose3d target_pose_;
   //path
   std::optional<nav_msgs::msg::Path> opti_path_;
   std::optional<extension_msgs::msg::TwistMultiArray> opti_twists_;
