@@ -39,6 +39,10 @@
 
 #define _ENABLE_ATOMIC_ALIGNMENT_FIX
 //******************************************************************************
+// ソートの実行方法設定
+//    #define SORT_MODE std::execution::seq // 逐次実行
+//    #define SORT_MODE std::execution::par // 並列実行
+#define SORT_MODE std::execution::par_unseq  // 並列化・ベクトル化
 // モデル設定
 #define NON_HOLONOMIC
 // デバック関連設定
@@ -102,6 +106,8 @@ public:
       "mpc_path_planning.mpc.weight.ref_state", std::vector<double>{0, 0, 0, 0, 0, 0});
     std::vector<double> CONTROL_WEIGHT = param<std::vector<double>>(
       "mpc_path_planning.mpc.weight.control", std::vector<double>{3, 3, 2});
+    std::vector<double> DIFF_CONTROL_WEIGHT = param<std::vector<double>>(
+      "mpc_path_planning.mpc.weight.diff_control", std::vector<double>{3, 3, 2});
     mpc_config_.state_weight << STATE_WEIGHT[0], STATE_WEIGHT[1], STATE_WEIGHT[2], STATE_WEIGHT[3],
       STATE_WEIGHT[4], STATE_WEIGHT[5];
     mpc_config_.final_state_weight << FINAL_STATE_WEIGHT[0], FINAL_STATE_WEIGHT[1],
@@ -109,6 +115,8 @@ public:
     mpc_config_.ref_state_weight << REF_STATE_WEIGHT[0], REF_STATE_WEIGHT[1], REF_STATE_WEIGHT[2],
       REF_STATE_WEIGHT[3], REF_STATE_WEIGHT[4], REF_STATE_WEIGHT[5];
     mpc_config_.control_weight << CONTROL_WEIGHT[0], CONTROL_WEIGHT[1], CONTROL_WEIGHT[2];
+    mpc_config_.diff_control_weight << DIFF_CONTROL_WEIGHT[0], DIFF_CONTROL_WEIGHT[1],
+      DIFF_CONTROL_WEIGHT[2];
     // mpc_config_.lpf_xy_gain = mpc_config_.dt / (mpc_config_.dt + xy_vel_time_constant);
     // mpc_config_.lpf_theta_gain = mpc_config_.dt / (mpc_config_.dt + theta_vel_time_constant);
     MPCPathPlanner::calc_lpf_gain(mpc_config_, xy_vel_time_constant, theta_vel_time_constant);
@@ -116,8 +124,7 @@ public:
       param<double>("mpc_path_planning.mpc.warm_start.diff_target_norm", 0.1);
     mpc_config_.warm_start_d_latest_gpl_norm =
       param<double>("mpc_path_planning.mpc.warm_start.latest_gpl_norm", 0.5);
-    mpc_config_.terminal_range =
-      param<double>("mpc_path_planning.mpc.terminal_range", 0.0);
+    mpc_config_.terminal_range = param<double>("mpc_path_planning.mpc.terminal_range", 0.0);
     std::string IPOPT_SB = param<std::string>("mpc_path_planning.mpc.ipopt.sb", "yes");
     std::string IPOPT_LINEAR_SOLVER = param<std::string>(
       "mpc_path_planning.mpc.ipopt.linear_solver", "mumps");  // mumpsは遅い ma27はHSLライブラリ必要
@@ -154,10 +161,11 @@ public:
     auto add_cost_func = std::bind(
       &MPCPathPlanning::add_cost_function, this, std::placeholders::_1, std::placeholders::_2,
       std::placeholders::_3);
-    auto add_const = std::bind(
+    auto add_const_func = std::bind(
       &MPCPathPlanning::add_constraints, this, std::placeholders::_1, std::placeholders::_2,
       std::placeholders::_3);
-    // planner_->set_user_function(init_func,add_cost_func,add_const);
+    auto set_param_func = std::bind(&MPCPathPlanning::set_user_param, this, std::placeholders::_1);
+    planner_->set_user_function(init_func, add_cost_func, add_const_func, set_param_func);
     // 最適化時間計測用
     planner_->timer = [&]() { return now().seconds(); };
     // モデル設定
@@ -183,7 +191,7 @@ public:
       });
     global_path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
       GLOBALPATH_TOPIC, rclcpp::QoS(10).reliable(),
-      [&](const nav_msgs::msg::Path::SharedPtr msg) {  global_path_ = make_path(*msg); });
+      [&](const nav_msgs::msg::Path::SharedPtr msg) { global_path_ = make_path(*msg); });
     odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
       ODOM_TOPIC, rclcpp::QoS(10),
       [&](nav_msgs::msg::Odometry::SharedPtr msg) { now_vel_ = make_twist(*msg); });
@@ -193,7 +201,8 @@ public:
     map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
       MAP_TOPIC, rclcpp::QoS(10).reliable(),
       [&](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
-        planner_->set_map(make_gridmap(*msg));
+        map_ = make_gridmap(*msg);
+        planner_->set_map(map_.value());
       });
     // timer
     path_planning_timer_ = this->create_wall_timer(1s * PLANNING_PERIOD, [&]() {
@@ -214,10 +223,13 @@ public:
         RCLCPP_INFO_CHANGE(0, this->get_logger(), "get base_link pose");
         // 経路計算
         if (global_path_) {
-          // planner_->set_map(make_gridmap(*map_msg_));
           planner_->set_grid_path(global_path_.value());
           RCLCPP_INFO_CHANGE(1, this->get_logger(), "get map");
+          obstacles_detect(base_link_pose);
           if (target_pose_) {
+#if defined(NON_HOLONOMIC)
+            now_vel_.linear.y = 0.0;
+#endif
 #if defined(PLANNING_DEBUG_OUTPUT)
             std::cout << "----------------------------------------------------------" << std::endl;
             std::cout << "now_vel:" << now_vel_ << std::endl;
@@ -258,6 +270,8 @@ private:
   std::string ROBOT_FRAME;
   double PLANNING_PERIOD;
   mpc_config_t mpc_config_;
+  double OBSTACLE_DETECT_DIST;
+  size_t OBSTACLES_MAX_SIZE;
   // tf
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener listener_;
@@ -279,8 +293,39 @@ private:
   // pose
   std::optional<Pose3d> target_pose_;
   // planner
-  std::shared_ptr<MPCPathPlanner> planner_;
+  std::optional<GridMap> map_;
   std::optional<Pathd> global_path_;
+  std::shared_ptr<MPCPathPlanner> planner_;
+
+  std::vector<std::pair<Vector2d, double>> obstacles_;
+  void obstacles_detect(Pose3d robot_pose)
+  {
+    Vector2d robot = {robot_pose.position.x, robot_pose.position.y};
+    if (map_) {
+      obstacles_.clear();
+#pragma omp parallel for
+      for (size_t y = 0; y < map_.value().info.height; y++) {
+        for (size_t x = 0; x < map_.value().info.width; x++) {
+          if (map_.value().is_wall(x, y)) {
+            Vector2d obstacle = map_.value().grid_to_pos(x, y);
+            double dist = (obstacle - robot).norm();
+            if (dist < OBSTACLE_DETECT_DIST) {
+#pragma omp critical
+              obstacles_.push_back({obstacle, dist});
+            }
+          }
+        }
+      }
+      if (obstacles_.size() != 0) {
+        std::sort(
+          SORT_MODE, obstacles_.begin(), obstacles_.end(), [](const auto & a, const auto & b) {
+            return a.second < b.second;
+          });  //距離が近い順にソート
+        if (obstacles_.size() > OBSTACLES_MAX_SIZE)
+          obstacles_.erase(obstacles_.begin() + OBSTACLES_MAX_SIZE, obstacles_.begin() + obstacles_.size());
+      }
+    }
+  }
 
   // MPU追加制約
   void init_parameter() {}
@@ -292,7 +337,7 @@ private:
     using namespace casadi;
     using Sl = casadi::Slice;
 
-    const double robot_colision_size = 0.0;
+    // const double robot_colision_size = 0.0;
     // for (size_t i = 1; i < X.size2(); i++) {//get_guard_circle_subject(const casadi::MX &xy, const casadi::MX &center, const casadi::MX &size, std::string comp)
     //   // test
     //   opti.subject_to(get_guard_circle_subject(
@@ -301,4 +346,5 @@ private:
     //     "keep out"));
     // }
   }
+  void set_user_param(casadi::Opti & opti) {}
 };
