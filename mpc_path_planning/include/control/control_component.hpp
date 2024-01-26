@@ -146,8 +146,7 @@ public:
 #endif
         // ゴール判定
         if (target_dist < GOAL_POS_RANGE) {
-          if (target_diff_angle < GOAL_ANGLE_RANGE) {              opti_twists_ = std::nullopt;
-              opti_path_ = std::nullopt;
+          if (target_diff_angle < GOAL_ANGLE_RANGE) {
             if (
               approx_zero(vel, GOAL_MIN_VEL_RANGE) &&
               approx_zero(angular, GOAL_MIN_ANGULAR_RANGE)) {

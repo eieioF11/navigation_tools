@@ -16,12 +16,12 @@
 #include <std_msgs/msg/empty.hpp>
 // opencv
 #include <opencv2/opencv.hpp>
-#include "cv_bridge/cv_bridge.h"
 
 #include "common_lib/ros2_utility/extension_msgs_util.hpp"
 #include "common_lib/ros2_utility/msg_util.hpp"
 #include "common_lib/ros2_utility/ros_opencv_util.hpp"
 #include "common_lib/ros2_utility/tf_util.hpp"
+#include "cv_bridge/cv_bridge.h"
 #include "extension_node/extension_node.hpp"
 // other
 #include "common_lib/common_lib.hpp"
@@ -56,50 +56,58 @@ public:
     std::string MAP_TOPIC = param<std::string>("global_path_planning.topic_name.map", "/map");
     std::string TARGET_TOPIC =
       param<std::string>("global_path_planning.topic_name.target", "/goal_pose");
-    std::string GLOBALPATH_TOPIC =
-      param<std::string>("global_path_planning.topic_name.global_path", "global_path_planning/path");
+    std::string GLOBALPATH_TOPIC = param<std::string>(
+      "global_path_planning.topic_name.global_path", "global_path_planning/path");
     // frame
     MAP_FRAME = param<std::string>("global_path_planning.tf_frame.map_frame", "map");
     ROBOT_FRAME = param<std::string>("global_path_planning.tf_frame.robot_frame", "base_link");
     // setup
     CONTROL_PERIOD = param<double>("global_path_planning.planning_period", 0.001);
-    std::string PATH_PLANNER =
-      param<std::string>("global_path_planning.path_planner", "a_star");
+    std::string PATH_PLANNER = param<std::string>("global_path_planning.path_planner", "a_star");
     // グリッドパスプランニング設定
     if (PATH_PLANNER.compare("wave_propagation") == 0)
-      planner_=std::make_shared<WavePropagation>();
+      planner_ = std::make_shared<WavePropagation>();
     else if (PATH_PLANNER.compare("wave_propagation_dist_map") == 0)
-      planner_=std::make_shared<WavePropagation>(true);
+      planner_ = std::make_shared<WavePropagation>(true);
     else if (PATH_PLANNER.compare("a_star") == 0)
-      planner_=std::make_shared<AStar>();
+      planner_ = std::make_shared<AStar>();
     else if (PATH_PLANNER.compare("extension_a_star") == 0)
-      planner_=std::make_shared<ExtensionAStar>();
+      planner_ = std::make_shared<ExtensionAStar>();
     else if (PATH_PLANNER.compare("dijkstra") == 0)
-      planner_=std::make_shared<Dijkstra>();
+      planner_ = std::make_shared<Dijkstra>();
     else if (PATH_PLANNER.compare("dijkstra_dist_map") == 0)
-      planner_=std::make_shared<Dijkstra>(true);
-    else
-    {
+      planner_ = std::make_shared<Dijkstra>(true);
+    else {
       RCLCPP_ERROR(this->get_logger(), "Nonexistent path planner algorithm");
       return;
     }
     RCLCPP_INFO(this->get_logger(), "path planner: %s", PATH_PLANNER.c_str());
     end_ = false;
     // publisher
-    global_path_pub_ = this->create_publisher<nav_msgs::msg::Path>(GLOBALPATH_TOPIC, rclcpp::QoS(10).reliable());
-    gpp_perfomance_pub_ = this->create_publisher<std_msgs::msg::Float32>("global_path_planning/time", rclcpp::QoS(5));
+    global_path_pub_ =
+      this->create_publisher<nav_msgs::msg::Path>(GLOBALPATH_TOPIC, rclcpp::QoS(10).reliable());
+    gpp_perfomance_pub_ =
+      this->create_publisher<std_msgs::msg::Float32>("global_path_planning/time", rclcpp::QoS(5));
     dist_map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>(
       "global_path_planning/dist_map", rclcpp::QoS(5));
     // subscriber
     map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
       MAP_TOPIC, rclcpp::QoS(10).reliable(),
-      [&](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) { map_msg_ = msg; gen_distance_map_ = false;});
+      [&](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
+        map_msg_ = msg;
+        gen_distance_map_ = false;
+      });
     goal_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
-      TARGET_TOPIC, rclcpp::QoS(10),
-      [&](geometry_msgs::msg::PoseStamped::SharedPtr msg) { target_pose_ = make_pose(msg->pose); end_ = false;});
+      TARGET_TOPIC, rclcpp::QoS(10), [&](geometry_msgs::msg::PoseStamped::SharedPtr msg) {
+        RCLCPP_INFO(this->get_logger(), "get target!");
+        target_pose_ = make_pose(msg->pose);
+        end_ = false;
+      });
     end_sub_ = this->create_subscription<std_msgs::msg::Empty>(
-      "mpc_path_planning/end", rclcpp::QoS(10),
-      [&](std_msgs::msg::Empty::SharedPtr msg) { end_ = true; });
+      "mpc_path_planning/end", rclcpp::QoS(10).reliable(), [&](std_msgs::msg::Empty::SharedPtr msg) {
+        RCLCPP_INFO(this->get_logger(), "end!");
+        end_ = true;
+      });
     // timer
     path_planning_timer_ = this->create_wall_timer(1s * CONTROL_PERIOD, [&]() {
       if (!tf_buffer_.canTransform(
@@ -109,8 +117,7 @@ public:
           this->get_logger(), "%s %s can not Transform", MAP_FRAME.c_str(), ROBOT_FRAME.c_str());
         return;
       }
-      if(end_)
-        target_pose_ = std::nullopt;
+      if (end_) target_pose_ = std::nullopt;
       auto map_to_base_link = lookup_transform(tf_buffer_, ROBOT_FRAME, MAP_FRAME);
       if (map_to_base_link) {
         base_link_pose_ = make_pose(map_to_base_link.value().transform);
@@ -125,7 +132,8 @@ public:
             end.pose = target_pose_.value();
             start_planning_timer_ = rclcpp::Clock().now();
             Pathd grid_path = planner_->path_planning(start, end);
-            global_path_pub_->publish(make_nav_path(make_header(MAP_FRAME, rclcpp::Clock().now()), grid_path));
+            global_path_pub_->publish(
+              make_nav_path(make_header(MAP_FRAME, rclcpp::Clock().now()), grid_path));
             double calc_time = (rclcpp::Clock().now() - start_planning_timer_).seconds();
             gpp_perfomance_pub_->publish(make_float32(calc_time * 1000));
           }
