@@ -132,7 +132,7 @@ public:
             global_path_pub_->publish(
               make_nav_path(make_header(MAP_FRAME, rclcpp::Clock().now()), grid_path));
             double calc_time = (rclcpp::Clock().now() - start_planning_timer_).seconds();
-            gpp_perfomance_pub_->publish(make_float32(calc_time * 1000));
+            gpp_perfomance_pub_->publish(make_float32(unit_cast<unit::time::s,unit::time::ms>(calc_time)));
           }
         }
       }

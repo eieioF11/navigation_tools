@@ -26,8 +26,8 @@ mpc_path_planning_node:
         max_acc: 2.9 #[m/s^s] 1.1 4.9 3.9 0.98 2.9
         max_angular_acc: 4.9 #[rad/s^s] 1.0 4.9
         # モデルパラメータ
-        xy_vel_time_constant: 0.6
-        theta_vel_time_constant: 0.3
+        xy_vel_time_constant: 0.0
+        theta_vel_time_constant: 0.0
         #重み[vx,vy,w,x,y,x]
         weight:
           state: [0.5, 0.0, 2.0, 20.0, 20.0, 0.5] #ステートコストの重み [10.0, 0.0, 10.0, 800.0, 800.0, 10.0]
@@ -46,7 +46,7 @@ mpc_path_planning_node:
           acceptable_tol: 0.000001 #収束許容値 def 0.000001
           compl_inf_tol: 0.0001 #相補性条件の「許容」しきい値 def 0.0001
       obstacle_detect:
-        dist: 2.0 #[m]
+        dist: 4.0 #[m]
         obstacle_size: 0.5 #[m]
         list_size: 50
 

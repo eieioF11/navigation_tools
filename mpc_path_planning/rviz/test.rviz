@@ -8,7 +8,7 @@ Panels:
         - /Status1
         - /TF1/Frames1
       Splitter Ratio: 0.4882352948188782
-    Tree Height: 720
+    Tree Height: 354
   - Class: rviz_common/Selection
     Name: Selection
   - Class: rviz_common/Tool Properties
@@ -673,11 +673,11 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 156.76214599609375
+      Scale: 170.55349731445312
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz_default_plugins)
-      X: 0.00422603078186512
-      Y: -0.6944825053215027
+      X: 0.11474454402923584
+      Y: -0.3827173411846161
     Saved: ~
 Window Geometry:
   Displays:

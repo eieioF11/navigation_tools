@@ -42,7 +42,7 @@
 
 #define _ENABLE_ATOMIC_ALIGNMENT_FIX
 //******************************************************************************
-#define EXECUSION_POINT_VALUE 10000000000000.0
+#define EXECUSION_POINT_VALUE 1000000000.0
 // #define EXECUSION_POINT_VALUE std::numeric_limits<double>::infinity()
 // ソートの実行方法設定
 //    #define SORT_MODE std::execution::seq // 逐次実行
@@ -236,11 +236,11 @@ public:
       auto map_to_base_link = lookup_transform(tf_buffer_, ROBOT_FRAME, MAP_FRAME);
       if (map_to_base_link) {
         Pose3d base_link_pose = make_pose(map_to_base_link.value().transform);
+        obstacles_detect(base_link_pose);
         RCLCPP_INFO_CHANGE(0, this->get_logger(), "get base_link pose");
         // 経路計算
         if (global_path_) {
           planner_->set_grid_path(global_path_.value());
-          obstacles_detect(base_link_pose);
           if (target_pose_) {
 #if defined(NON_HOLONOMIC)
             now_vel_.linear.y = 0.0;
@@ -252,10 +252,8 @@ public:
             std::cout << "start:" << base_link_pose << std::endl;
             std::cout << "end:" << target_pose_.value() << std::endl;
 #endif
-            PathPointd start, end;
-            start.pose = base_link_pose;
-            start.velocity = now_vel_;
-            end.pose = target_pose_.value();
+            PathPointd start = make_pathpoint<double>(base_link_pose,now_vel_);
+            PathPointd end = make_pathpoint<double>(target_pose_.value());
             // path planning
             Pathd opti_path = planner_->path_planning(start, end);
             Pathd init_path = planner_->get_init_path();
@@ -269,7 +267,7 @@ public:
               opti_path_pub_->publish(o_ppath);
               opti_twists_pub_->publish(o_vpath);
               //debug
-              perfomance_pub_->publish(make_float32(planner_->get_solve_time() * 1000));
+              perfomance_pub_->publish(make_float32(unit_cast<unit::time::s,unit::time::ms>(planner_->get_solve_time())));
             }
           }
         }
@@ -315,10 +313,10 @@ private:
   std::vector<std::pair<Vector2d, double>> obstacles_;
   void obstacles_detect(Pose3d robot_pose)
   {
-    auto start = rclcpp::Clock().now();
-    Vector2d robot = {robot_pose.position.x, robot_pose.position.y};
     if (map_)
     {
+      auto start = rclcpp::Clock().now();
+      Vector2d robot = {robot_pose.position.x, robot_pose.position.y};
       obstacles_.clear();
 #pragma omp parallel for
       for (size_t y = 0; y < map_.value().info.height; y++)
@@ -338,9 +336,6 @@ private:
           }
         }
       }
-#if defined(PLANNING_DEBUG_OUTPUT)
-      std::cout << "obstacles size:" << obstacles_.size() << std::endl;
-#endif
       size_t obstacles_size = obstacles_.size();
       if (obstacles_size != 0)
       {
@@ -351,10 +346,12 @@ private:
           obstacles_.erase(
               obstacles_.begin() + OBSTACLES_MAX_SIZE, obstacles_.begin() + obstacles_size); // サイズオーバーした要素は削除(ロボットに近いもののみ制約に追加)
       }
-    }
 #if defined(PLANNING_DEBUG_OUTPUT)
-    std::cout << "obstacles detect time:" << (rclcpp::Clock().now() - start).seconds() << std::endl;
+      std::cout << "obstacles size:" << obstacles_size << std::endl;
+      std::cout << "obstacles size:" << obstacles_.size() << std::endl;
+      std::cout << "obstacles detect time:" << (rclcpp::Clock().now() - start).seconds() << std::endl;
 #endif
+    }
   }
 
   // MPU追加制約
@@ -386,7 +383,7 @@ private:
     casadi::DM dm_obstacles = DM::zeros(2, OBSTACLES_MAX_SIZE);
     size_t obstacles_size = obstacles_.size();
     visualization_msgs::msg::MarkerArray obstacles_marker;
-    obstacles_marker.markers.resize(obstacles_size);
+    obstacles_marker.markers.resize(OBSTACLES_MAX_SIZE);
 #pragma omp parallel for
     for (size_t i = 0; i < OBSTACLES_MAX_SIZE; i++)
     {
