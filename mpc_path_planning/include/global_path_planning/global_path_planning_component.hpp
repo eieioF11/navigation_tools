@@ -82,14 +82,13 @@ public:
       return;
     }
     RCLCPP_INFO(this->get_logger(), "path planner: %s", PATH_PLANNER.c_str());
-    end_ = false;
     // publisher
     global_path_pub_ =
       this->create_publisher<nav_msgs::msg::Path>(GLOBALPATH_TOPIC, rclcpp::QoS(10).reliable());
     gpp_perfomance_pub_ =
       this->create_publisher<std_msgs::msg::Float32>("global_path_planning/time", rclcpp::QoS(5));
     dist_map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>(
-      "global_path_planning/dist_map", rclcpp::QoS(5));
+      "global_path_planning/dist_map", rclcpp::QoS(10).reliable());
     // subscriber
     map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
       MAP_TOPIC, rclcpp::QoS(10).reliable(),
@@ -101,12 +100,11 @@ public:
       TARGET_TOPIC, rclcpp::QoS(10), [&](geometry_msgs::msg::PoseStamped::SharedPtr msg) {
         RCLCPP_INFO(this->get_logger(), "get target!");
         target_pose_ = make_pose(msg->pose);
-        end_ = false;
       });
     end_sub_ = this->create_subscription<std_msgs::msg::Empty>(
       "mpc_path_planning/end", rclcpp::QoS(10).reliable(), [&](std_msgs::msg::Empty::SharedPtr msg) {
         RCLCPP_INFO(this->get_logger(), "end!");
-        end_ = true;
+        target_pose_ = std::nullopt;
       });
     // timer
     path_planning_timer_ = this->create_wall_timer(1s * CONTROL_PERIOD, [&]() {
@@ -117,7 +115,6 @@ public:
           this->get_logger(), "%s %s can not Transform", MAP_FRAME.c_str(), ROBOT_FRAME.c_str());
         return;
       }
-      if (end_) target_pose_ = std::nullopt;
       auto map_to_base_link = lookup_transform(tf_buffer_, ROBOT_FRAME, MAP_FRAME);
       if (map_to_base_link) {
         base_link_pose_ = make_pose(map_to_base_link.value().transform);
@@ -150,9 +147,6 @@ private:
   double MIN_VEL;
   double MIN_ANGULAR;
   bool gen_distance_map_;
-  bool end_;
-  // マルチスレッド関連
-  inline static std::mutex mtx;
   // tf
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener listener_;

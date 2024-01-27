@@ -24,13 +24,16 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(
                 [os.path.join(pkg_dir, "launch"), "/mpc.launch.py"]
             ),
+            launch_arguments={
+                'config': os.path.join(pkg_dir, "config", "sim_mpc_path_planning_param.yaml"),
+            }.items()
         ),
         Node(
             package="tf2_ros",
             executable="static_transform_publisher",
             arguments=[
                 "--x",
-                "-2.5",
+                "-2.0",
                 "--y",
                 "0.0",
                 "--z",

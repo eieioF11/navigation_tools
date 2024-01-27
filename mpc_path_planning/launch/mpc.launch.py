@@ -14,13 +14,16 @@ from launch import LaunchDescription
 
 def generate_launch_description():
     pkg_dir = get_package_share_directory('mpc_path_planning')
+    params = [
+        DeclareLaunchArgument('config',default_value=os.path.join(pkg_dir, "config", "mpc_path_planning_param.yaml")),
+    ]
     list = [
         Node(
             package='mpc_path_planning',
             executable='mpc_path_planning',
             namespace='',
             output="screen",
-            parameters=[os.path.join(pkg_dir, "config", "mpc_path_planning_param.yaml")],
+            parameters=[LaunchConfiguration('config')],
             respawn=True,
         ),
         Node(
@@ -28,7 +31,7 @@ def generate_launch_description():
             executable='global_path_planning',
             namespace='',
             output="screen",
-            parameters=[os.path.join(pkg_dir, "config", "mpc_path_planning_param.yaml")],
+            parameters=[LaunchConfiguration('config')],
             respawn=True,
         ),
         Node(
@@ -36,9 +39,9 @@ def generate_launch_description():
             executable='control',
             namespace='',
             output="screen",
-            parameters=[os.path.join(pkg_dir, "config", "mpc_path_planning_param.yaml")],
+            parameters=[LaunchConfiguration('config')],
             respawn=True,
         )
     ]
 
-    return LaunchDescription(list)
+    return LaunchDescription(params + list)
