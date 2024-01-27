@@ -51,9 +51,10 @@
 // モデル設定
 #define NON_HOLONOMIC
 // デバック関連設定
-#define PLANNING_DEBUG_OUTPUT
+// #define PLANNING_DEBUG_OUTPUT
 // #define MAP_GEN_DEBUG_OUTPUT
-#define CONTROL_DEBUG_OUTPUT
+// #define CONTROL_DEBUG_OUTPUT
+#define OBSTACLE_DETECT_DEBUG_OUTPUT
 //******************************************************************************
 using namespace common_lib;
 using namespace std::chrono_literals;
@@ -103,25 +104,35 @@ public:
     double xy_vel_time_constant = param<double>("mpc_path_planning.mpc.xy_vel_time_constant", 0.0);
     double theta_vel_time_constant =
         param<double>("mpc_path_planning.mpc.theta_vel_time_constant", 0.0);
-    std::vector<double> STATE_WEIGHT = param<std::vector<double>>(
-        "mpc_path_planning.mpc.weight.state", std::vector<double>{10, 10, 6, 200, 200, 60});
-    std::vector<double> FINAL_STATE_WEIGHT = param<std::vector<double>>(
-        "mpc_path_planning.mpc.weight.final_state", std::vector<double>{10, 10, 6, 200, 200, 60});
-    std::vector<double> REF_STATE_WEIGHT = param<std::vector<double>>(
-        "mpc_path_planning.mpc.weight.ref_state", std::vector<double>{0, 0, 0, 0, 0, 0});
-    std::vector<double> CONTROL_WEIGHT = param<std::vector<double>>(
-        "mpc_path_planning.mpc.weight.control", std::vector<double>{3, 3, 2});
-    std::vector<double> DIFF_CONTROL_WEIGHT = param<std::vector<double>>(
-        "mpc_path_planning.mpc.weight.diff_control", std::vector<double>{3, 3, 2});
-    mpc_config_.state_weight << STATE_WEIGHT[0], STATE_WEIGHT[1], STATE_WEIGHT[2], STATE_WEIGHT[3],
-        STATE_WEIGHT[4], STATE_WEIGHT[5];
-    mpc_config_.final_state_weight << FINAL_STATE_WEIGHT[0], FINAL_STATE_WEIGHT[1],
-        FINAL_STATE_WEIGHT[2], FINAL_STATE_WEIGHT[3], FINAL_STATE_WEIGHT[4], FINAL_STATE_WEIGHT[5];
-    mpc_config_.ref_state_weight << REF_STATE_WEIGHT[0], REF_STATE_WEIGHT[1], REF_STATE_WEIGHT[2],
-        REF_STATE_WEIGHT[3], REF_STATE_WEIGHT[4], REF_STATE_WEIGHT[5];
-    mpc_config_.control_weight << CONTROL_WEIGHT[0], CONTROL_WEIGHT[1], CONTROL_WEIGHT[2];
-    mpc_config_.diff_control_weight << DIFF_CONTROL_WEIGHT[0], DIFF_CONTROL_WEIGHT[1],
-        DIFF_CONTROL_WEIGHT[2];
+    mpc_config_.state_weight = make_eigen_vector6(param<std::vector<double>>(
+        "mpc_path_planning.mpc.weight.state", std::vector<double>{10, 10, 6, 200, 200, 60}));
+    mpc_config_.final_state_weight = make_eigen_vector6(param<std::vector<double>>(
+        "mpc_path_planning.mpc.weight.final_state", std::vector<double>{10, 10, 6, 200, 200, 60}));
+    mpc_config_.ref_state_weight = make_eigen_vector6(param<std::vector<double>>(
+        "mpc_path_planning.mpc.weight.ref_state", std::vector<double>{0, 0, 0, 0, 0, 0}));
+    mpc_config_.control_weight = make_eigen_vector3(param<std::vector<double>>(
+        "mpc_path_planning.mpc.weight.control", std::vector<double>{3, 3, 2}));
+    mpc_config_.diff_control_weight = make_eigen_vector3(param<std::vector<double>>(
+        "mpc_path_planning.mpc.weight.diff_control", std::vector<double>{3, 3, 2}));
+    // std::vector<double> STATE_WEIGHT = param<std::vector<double>>(
+    //     "mpc_path_planning.mpc.weight.state", std::vector<double>{10, 10, 6, 200, 200, 60});
+    // std::vector<double> FINAL_STATE_WEIGHT = param<std::vector<double>>(
+    //     "mpc_path_planning.mpc.weight.final_state", std::vector<double>{10, 10, 6, 200, 200, 60});
+    // std::vector<double> REF_STATE_WEIGHT = param<std::vector<double>>(
+    //     "mpc_path_planning.mpc.weight.ref_state", std::vector<double>{0, 0, 0, 0, 0, 0});
+    // std::vector<double> CONTROL_WEIGHT = param<std::vector<double>>(
+    //     "mpc_path_planning.mpc.weight.control", std::vector<double>{3, 3, 2});
+    // std::vector<double> DIFF_CONTROL_WEIGHT = param<std::vector<double>>(
+    //     "mpc_path_planning.mpc.weight.diff_control", std::vector<double>{3, 3, 2});
+    // mpc_config_.state_weight << STATE_WEIGHT[0], STATE_WEIGHT[1], STATE_WEIGHT[2], STATE_WEIGHT[3],
+    //     STATE_WEIGHT[4], STATE_WEIGHT[5];
+    // mpc_config_.final_state_weight << FINAL_STATE_WEIGHT[0], FINAL_STATE_WEIGHT[1],
+    //     FINAL_STATE_WEIGHT[2], FINAL_STATE_WEIGHT[3], FINAL_STATE_WEIGHT[4], FINAL_STATE_WEIGHT[5];
+    // mpc_config_.ref_state_weight << REF_STATE_WEIGHT[0], REF_STATE_WEIGHT[1], REF_STATE_WEIGHT[2],
+    //     REF_STATE_WEIGHT[3], REF_STATE_WEIGHT[4], REF_STATE_WEIGHT[5];
+    // mpc_config_.control_weight << CONTROL_WEIGHT[0], CONTROL_WEIGHT[1], CONTROL_WEIGHT[2];
+    // mpc_config_.diff_control_weight << DIFF_CONTROL_WEIGHT[0], DIFF_CONTROL_WEIGHT[1],
+    //     DIFF_CONTROL_WEIGHT[2];
     MPCPathPlanner::calc_lpf_gain(mpc_config_, xy_vel_time_constant, theta_vel_time_constant);
     std::cout << "lpf_xy_gain:" << mpc_config_.lpf_xy_gain << std::endl;
     std::cout << "lpf_theta_gain:" << mpc_config_.lpf_theta_gain << std::endl;
@@ -275,7 +286,6 @@ public:
   }
 
 private:
-  bool gen_distance_map_;
   // param
   std::string MAP_FRAME;
   std::string ROBOT_FRAME;
@@ -346,7 +356,7 @@ private:
           obstacles_.erase(
               obstacles_.begin() + OBSTACLES_MAX_SIZE, obstacles_.begin() + obstacles_size); // サイズオーバーした要素は削除(ロボットに近いもののみ制約に追加)
       }
-#if defined(PLANNING_DEBUG_OUTPUT)
+#if defined(OBSTACLE_DETECT_DEBUG_OUTPUT)
       std::cout << "obstacles size:" << obstacles_size << std::endl;
       std::cout << "obstacles size:" << obstacles_.size() << std::endl;
       std::cout << "obstacles detect time:" << (rclcpp::Clock().now() - start).seconds() << std::endl;
