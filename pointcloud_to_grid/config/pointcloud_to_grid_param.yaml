@@ -3,11 +3,16 @@ pointcloud_to_grid_node:
     pointcloud_to_grid:
       topic_name:
         map: "/map"
+        storage_map: "/storage_map"
         cloud: "/glim_ros/points"
+        # cloud: "/demo_cam/mycamera/points_demo"
         # cloud: "/livox/lidar"
       tf_frame:
         map_frame: "map"
+      period: 0.01 #[s]
       add_cell: true
+      que:
+        size: 10
       filter:
         voxelgrid_size: 0.01
         z_max: 1.0
@@ -15,5 +20,5 @@ pointcloud_to_grid_node:
       grid_map_info:
         resolution: 0.1 #[m] def 0.05
         # origin: [-5.0,-5.0,0.0]
-        width: 25.0  #[m]
+        width: 25.0 #[m]
         height: 25.0 #[m]

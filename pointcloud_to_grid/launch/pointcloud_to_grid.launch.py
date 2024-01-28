@@ -28,6 +28,7 @@ def generate_launch_description():
                 "--frame-id",
                 "map",
                 "--child-frame-id",
+                # "camera_link",
                 "livox_frame",
             ],
     )
