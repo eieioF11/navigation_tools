@@ -1,21 +1,18 @@
-pointcloud_to_grid_node:
+lrf_to_grid_node:
   ros__parameters:
-    pointcloud_to_grid:
+    lrf_to_grid:
       topic_name:
-        map: "/map"
-        storage_map: "/storage_map"
+        map: "/lrf/map"
+        laser: "/scan"
         cloud: "/glim_ros/points"
         # cloud: "/demo_cam/mycamera/points_demo"
         # cloud: "/livox/lidar"
       tf_frame:
         map_frame: "map"
-      period: 0.1 #[s]
-      add_cell: true
-      que:
-        size: 10
+      add_cell: false
       filter:
-        voxelgrid_size: 0.1
-        z_max: 1.0
+        voxelgrid_size: 1.0
+        z_max: 1.5
         z_min: 0.1
       grid_map_info:
         resolution: 0.1 #[m] def 0.05

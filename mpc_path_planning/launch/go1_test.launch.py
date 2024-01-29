@@ -24,6 +24,9 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(
                 [os.path.join(pkg_dir, "launch"), "/mpc.launch.py"]
             ),
+            launch_arguments={
+                'config': os.path.join(pkg_dir, "config", "robot_mpc_path_planning_param.yaml"),
+            }.items()
         ),
         Node(
             package="tf2_ros",
@@ -46,6 +49,15 @@ def generate_launch_description():
                 "--child-frame-id",
                 "base_link",
             ],
+        ),
+        Node(
+            package='lrf_to_grid',
+            executable='lrf_to_grid',
+            namespace='',
+            # output="screen",
+            arguments=['--ros-args', '--log-level', 'WARN'],
+            parameters=[os.path.join(get_package_share_directory('lrf_to_grid'), "config", "lrf_to_grid_param.yaml")],
+            respawn=True,
         ),
         Node(
             package='pointcloud_to_grid',

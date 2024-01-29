@@ -2,9 +2,10 @@ mpc_path_planning_node:
   ros__parameters:
     mpc_path_planning:
       topic_name:
-        map: "/global_path_planning/dist_map"
+        map: "/lrf/map"
         target: "/goal_pose"
         odom: "/odom"
+        imu: "/livox/imu"
         global_path: "global_path_planning/path"
         init_path: "mpc_path_planning/init_path"
         opti_path: "mpc_path_planning/opti_path"
@@ -14,10 +15,10 @@ mpc_path_planning_node:
         robot_frame: "base_link"
       planning_period: 0.001 #[s]
       mpc:
-        dt: 0.07 #[s] 0.135
+        dt: 0.085 #[s] 0.135
         horizon_time: 5.0
         # pos_error:      0.035 #0.015 # 0.01
-        pos_error: 1.0 #[m] 0.8
+        pos_error: 2.0 #[m] 0.8
         # ロボット制約
         forward_only: false
         min_vel: 0.0 #[m/s]  最小速度制限(0~)
@@ -27,17 +28,18 @@ mpc_path_planning_node:
         max_acc: 2.9 #[m/s^s] 1.1 4.9 3.9 0.98 2.9
         max_angular_acc: 4.9 #[rad/s^s] 1.0 4.9
         # モデルパラメータ
-        xy_vel_time_constant: 0.6
-        theta_vel_time_constant: 0.3
+        xy_vel_time_constant: 0.05
+        theta_vel_time_constant: 0.1
         #重み[vx,vy,w,x,y,x]
         weight:
-          state: [0.5, 0.0, 2.0, 5.0, 5.0, 0.2] #ステートコストの重み [10.0, 0.0, 10.0, 800.0, 800.0, 10.0]
-          final_state: [0.5, 0.0, 0.5, 50.0, 50.0, 60.0] #終端コストの重み     [10.0, 0.0, 10.0, 800.0, 800.0, 10.0]
-          ref_state: [0.0, 0.0, 0.0, 200.0, 200.0, 1.0] #初期経路(grid_path)とのエラーコストの重み
-          control: [1.0, 0.0, 1.0] #制御量コストの重み
-          diff_control: [60.0, 0.0, 10.0] #制御量変化コストの重み
+          state: [1.0, 0.0, 5.0, 20.0, 20.0, 0.5] #ステートコストの重み [10.0, 0.0, 10.0, 800.0, 800.0, 10.0]
+          final_state: [0.5, 0.0, 0.5, 65.0, 65.0, 90.0] #終端コストの重み     [10.0, 0.0, 10.0, 800.0, 800.0, 10.0]
+          ref_state: [0.0, 0.0, 0.0, 70.0, 70.0, 0.5] #初期経路(grid_path)とのエラーコストの重み
+          control: [2.0, 0.0, 5.0] #制御量コストの重み
+          diff_control: [50.0, 0.0, 25.0] #制御量変化コストの重み
         warm_start:
-          latest_gpl_norm: 0.01 #[m]
+          latest_gpl_norm: 0.1 #[m] 最後に初期値計算を行った地点からlatest_gpl_norm[m]離れたら
+          latest_target_norm: 0.01 #[m] 目標値がlatest_target_norm[m]以内(変わってない)とき
         terminal_range: 0.45
         ipopt: #ソルバー設定
           sb: "yes" # コンソールにヘッダを出力しない
@@ -45,22 +47,22 @@ mpc_path_planning_node:
           max_iter: 1000 #最大反復回数 def 500
           acceptable_tol: 0.000001 #収束許容値 def 0.000001
           compl_inf_tol: 0.0001 #相補性条件の「許容」しきい値 def 0.0001
-        obstacle_detect:
-          dist: 1.0 #[m]
-          obstacle_size: 0.1 #[m]
-          list_size: 5
+      obstacle_detect:
+        dist: 5.0 #[m]
+        obstacle_size: 1.0 #[m]
+        list_size: 20
 
 global_path_planning_node:
   ros__parameters:
     global_path_planning:
       topic_name:
-        map: "/map"
+        map: "/storage_map"
         target: "/goal_pose"
         global_path: "global_path_planning/path"
       tf_frame:
         map_frame: "map"
         robot_frame: "base_link"
-      planning_period: 0.1 #[s]
+      planning_period: 1.0 #[s]
       path_planner: "extension_a_star" #dijkstra,dijkstra_dist_map,a_star,extension_a_star,wave_propagation,wave_propagation_dist_map
 
 control_node:
@@ -75,9 +77,9 @@ control_node:
         map_frame: "map"
         robot_frame: "base_link"
       control_period: 0.001 #[s]
-      mpc_dt: 0.07
+      mpc_dt: 0.085
       goal:
-        pos_range: 0.25 #[m] 0.05
+        pos_range: 0.26 #[m] 0.05
         angle_range: 6.0 #[deg] 0.5
         min_vel_range: 0.5 #[m/s] 0.005
         min_angular_range: 0.5 #[rad/s] 0.01
