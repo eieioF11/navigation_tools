@@ -2,9 +2,10 @@ mpc_path_planning_node:
   ros__parameters:
     mpc_path_planning:
       topic_name:
-        map: "/global_path_planning/dist_map"
+        map: "/lrf/map"
         target: "/goal_pose"
         odom: "/odom"
+        imu: "/imu"
         global_path: "global_path_planning/path"
         init_path: "mpc_path_planning/init_path"
         opti_path: "mpc_path_planning/opti_path"
@@ -48,7 +49,7 @@ mpc_path_planning_node:
       obstacle_detect:
         dist: 2.0 #[m]
         obstacle_size: 0.43 #[m]
-        list_size: 50
+        list_size: 20
 
 global_path_planning_node:
   ros__parameters:

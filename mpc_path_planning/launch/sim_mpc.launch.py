@@ -23,6 +23,15 @@ def generate_launch_description():
                 'config': os.path.join(pkg_dir, "config", "sim_mpc_path_planning_param.yaml"),
             }.items()
         ),
+        Node(
+            package='lrf_to_grid',
+            executable='lrf_to_grid',
+            namespace='',
+            # output="screen",
+            arguments=['--ros-args', '--log-level', 'WARN'],
+            parameters=[os.path.join(get_package_share_directory('lrf_to_grid'), "config", "sim_lrf_to_grid_param.yaml")],
+            respawn=True,
+        ),
     ]
 
     return LaunchDescription(list)

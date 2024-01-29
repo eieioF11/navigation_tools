@@ -108,7 +108,6 @@ public:
           if (gmap_.is_contain(p))  //その点がgmap_.info.widthとgmap_.info.heightの範囲内かどうか
             if (!gmap_.is_wall(gmap_.at(p))) gmap_.set(p, GridMap::WALL_VALUE);
           if (ADD_CELL) {
-#pragma omp parallel for
             for (size_t i = 0; i < 8; i++) {
               Vector2d np = p + nb[i];
               if (gmap_.is_contain(np))  //その点がgmap_.info.widthとgmap_.info.heightの範囲内かどうか
@@ -135,7 +134,6 @@ public:
 #pragma omp parallel for
         for(const auto &map : gmap_que_)
         {
-#pragma omp parallel for
           for (size_t i = 0;i < map.data.size();i++)
           {
             if (map.is_wall(map.data[i]))
