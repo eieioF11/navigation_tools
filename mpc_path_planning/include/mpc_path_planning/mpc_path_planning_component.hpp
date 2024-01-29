@@ -350,7 +350,6 @@ private:
       obstacles_.clear();
 #pragma omp parallel for
       for (size_t y = 0; y < map_.value().info.height; y++) {
-#pragma omp parallel for
         for (size_t x = 0; x < map_.value().info.width; x++) {
           if (map_.value().is_wall(x, y)) {
             Vector2d obstacle = map_.value().grid_to_pos(x, y);
