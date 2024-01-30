@@ -33,7 +33,7 @@ def generate_launch_description():
             executable="static_transform_publisher",
             arguments=[
                 "--x",
-                "-0.24",
+                "-0.255",
                 "--y",
                 "0.0",
                 "--z",

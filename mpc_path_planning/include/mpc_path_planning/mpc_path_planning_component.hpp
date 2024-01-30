@@ -54,7 +54,7 @@
 // デバック関連設定
 // #define PLANNING_DEBUG_OUTPUT
 // #define MAP_GEN_DEBUG_OUTPUT
-// #define CONTROL_DEBUG_OUTPUT
+#define CONTROL_DEBUG_OUTPUT
 // #define USE_IMU_DEBUG
 // #define OBSTACLE_DETECT_DEBUG_OUTPUT
 //******************************************************************************
@@ -157,6 +157,8 @@ public:
     OBSTACLES_MAX_SIZE = (size_t)param<int>("mpc_path_planning.obstacle_detect.list_size", 5);
     // init
     RCLCPP_INFO(this->get_logger(), "Initialization !");
+    init_data_logger({"odm_vx","odm_vy","odm_w","imu_vx","imu_vy","imu_w","error_x","error_y","error_w"});
+    pre_get_imu_time_ = rclcpp::Clock().now();
     target_pose_ = std::nullopt;
     vel_error_.linear = {0.0, 0.0, 0.0};
     vel_error_.angular = {0.0, 0.0, 0.0};
@@ -229,6 +231,7 @@ public:
         // v.z = complementary_filter(now_vel_.linear.z, imu_vel_.linear.z, v.z, dt, alpha);
         vel_error_.linear = v - now_vel_.linear;
         vel_error_.angular.z = imu_vel_.angular.z - now_vel_.angular.z;
+        log(now_vel_.linear.x,now_vel_.linear.y,now_vel_.angular.z,v.x,v.y,imu_vel_.angular.z,vel_error_.linear.x,vel_error_.linear.y,vel_error_.angular.z);
 #if defined(USE_IMU_DEBUG)
         std::cout << "----------------------------------------------------------" << std::endl;
         std::cout << "now_vel:" << now_vel_ << std::endl;
@@ -256,10 +259,9 @@ public:
         if (global_path_) {
 #if defined(NON_HOLONOMIC)
           now_vel_.linear.y = 0.0;
-          vel_error_.linear.y = 0.0;
 #endif
           planner_->set_model_error(make_eigen_vector6(
-            {vel_error_.linear.x, vel_error_.linear.y, vel_error_.angular.z, 0.0, 0.0, 0.0}));
+            {0.0, 0.0, 0.0, 0.0, 0.0, 0.0}));
           planner_->set_grid_path(global_path_.value());
           if (target_pose_) {
 #if defined(PLANNING_DEBUG_OUTPUT)

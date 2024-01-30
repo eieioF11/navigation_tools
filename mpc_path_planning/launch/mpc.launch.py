@@ -18,6 +18,11 @@ def generate_launch_description():
         DeclareLaunchArgument('config',default_value=os.path.join(pkg_dir, "config", "mpc_path_planning_param.yaml")),
     ]
     list = [
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                [os.path.join(get_package_share_directory("data_logger"), "launch"), "/data_logger.launch.py"]
+            ),
+        ),
         Node(
             package='mpc_path_planning',
             executable='mpc_path_planning',

@@ -32,6 +32,7 @@ public:
     std::string TARGET_TOPIC =
         param<std::string>("mpc_path_planning.topic_name.target", "/goal_pose");
     std::string CMD_VEL_TOPIC = param<std::string>("control.topic_name.cmd_vel", "/cmd_vel");
+    std::string ODOM_TOPIC = param<std::string>("control.topic_name.odom", "/odom");
     // frame
     MAP_FRAME = param<std::string>("control.tf_frame.map_frame", "map");
     ROBOT_FRAME = param<std::string>("control.tf_frame.robot_frame", "base_link");
@@ -45,6 +46,7 @@ public:
     GOAL_MIN_ANGULAR_RANGE = param<double>("control.goal.min_angular_range", 0.001);
     // init
     RCLCPP_INFO(this->get_logger(), "Initialization !");
+    init_data_logger({"u_vx","u_vy","u_w","odm_vx","odm_vy","odm_w"});
     opti_twists_ = std::nullopt;
     opti_path_ = std::nullopt;
     pre_control_time_ = this->get_clock()->now();
@@ -76,6 +78,9 @@ public:
         OPTITWISTS_TOPIC, rclcpp::QoS(10),
         [&](extension_msgs::msg::TwistMultiArray::SharedPtr msg)
         { opti_twists_ = *msg; });
+    odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
+      ODOM_TOPIC, rclcpp::QoS(10),
+      [&](nav_msgs::msg::Odometry::SharedPtr msg) { odom_vel_ = make_twist(*msg); });
     // timer
     control_timer_ = this->create_wall_timer(1s * CONTROL_PERIOD, [&]()
                                              {
@@ -165,9 +170,12 @@ public:
 #if defined(CONTROL_DEBUG_OUTPUT)
         std::cout << "control_time:" << control_time << std::endl;
         std::cout << "cmd_vel:" << cmd_vel << std::endl;
-        // std::cout << "now_vel_:" << now_vel_ << std::endl;
 #endif
-        cmd_vel_pub_->publish(make_geometry_twist(cmd_vel));
+        if(!cmd_vel.linear.has_inf()&&!cmd_vel.angular.has_inf()&&!cmd_vel.linear.has_nan()&&!cmd_vel.angular.has_nan())
+          cmd_vel_pub_->publish(make_geometry_twist(cmd_vel));
+        else
+          cmd_vel_pub_->publish(stop());
+        log(cmd_vel.linear.x,cmd_vel.linear.y,cmd_vel.angular.z,odom_vel_.linear.x,odom_vel_.linear.y,odom_vel_.angular.z);
       } else
         cmd_vel_pub_->publish(stop());
       linear_vel_pub_->publish(make_float32(vel));
@@ -197,6 +205,7 @@ private:
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr opti_path_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr goal_sub_;
   rclcpp::Subscription<extension_msgs::msg::TwistMultiArray>::SharedPtr opti_twists_sub_;
+  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
   // publisher
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_pub_;
   rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr end_pub_;
@@ -205,7 +214,7 @@ private:
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr perfomance_pub_;
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr control_time_pub_;
   // twist
-  Twistd now_vel_;
+  Twistd odom_vel_;
   // pose
   Pose3d target_pose_;
   // path

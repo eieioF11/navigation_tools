@@ -13,7 +13,7 @@ lrf_to_grid_node:
       filter:
         voxelgrid_size: 1.0
         z_max: 1.5
-        z_min: 0.1
+        z_min: 0.3
       grid_map_info:
         resolution: 0.1 #[m] def 0.05
         # origin: [-5.0,-5.0,0.0]
