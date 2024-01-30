@@ -46,7 +46,6 @@ public:
     GOAL_MIN_ANGULAR_RANGE = param<double>("control.goal.min_angular_range", 0.001);
     // init
     RCLCPP_INFO(this->get_logger(), "Initialization !");
-    init_data_logger({"u_vx","u_vy","u_w","odm_vx","odm_vy","odm_w"});
     opti_twists_ = std::nullopt;
     opti_path_ = std::nullopt;
     pre_control_time_ = this->get_clock()->now();
@@ -182,6 +181,7 @@ public:
       angular_vel_pub_->publish(make_float32(angular));
       perfomance_pub_->publish(make_float32(unit_cast<unit::time::s,unit::time::ms>((now_time - pre_control_time_).seconds())));
       pre_control_time_ = this->get_clock()->now(); });
+    init_data_logger({"u_vx","u_vy","u_w","odm_vx","odm_vy","odm_w"});
   }
 
 private:

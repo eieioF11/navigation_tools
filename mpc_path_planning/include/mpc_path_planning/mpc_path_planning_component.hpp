@@ -157,7 +157,6 @@ public:
     OBSTACLES_MAX_SIZE = (size_t)param<int>("mpc_path_planning.obstacle_detect.list_size", 5);
     // init
     RCLCPP_INFO(this->get_logger(), "Initialization !");
-    init_data_logger({"odm_vx","odm_vy","odm_w","imu_vx","imu_vy","imu_w","error_x","error_y","error_w"});
     pre_get_imu_time_ = rclcpp::Clock().now();
     target_pose_ = std::nullopt;
     vel_error_.linear = {0.0, 0.0, 0.0};
@@ -294,6 +293,7 @@ public:
         }
       }
     });
+    init_data_logger({"odm_vx","odm_vy","odm_w","imu_vx","imu_vy","imu_w","error_x","error_y","error_w"});
   }
 
 private:
