@@ -4,6 +4,7 @@
 #include <limits>
 #include <mutex>
 #include <optional>
+#include <queue>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -45,10 +46,6 @@
 //******************************************************************************
 #define EXECUSION_POINT_VALUE 1000000000.0
 // #define EXECUSION_POINT_VALUE std::numeric_limits<double>::infinity()
-// ソートの実行方法設定
-//    #define SORT_MODE std::execution::seq // 逐次実行
-//    #define SORT_MODE std::execution::par // 並列実行
-#define SORT_MODE std::execution::par_unseq  // 並列化・ベクトル化
 // モデル設定
 #define NON_HOLONOMIC
 // デバック関連設定
@@ -57,6 +54,7 @@
 #define CONTROL_DEBUG_OUTPUT
 // #define USE_IMU_DEBUG
 // #define OBSTACLE_DETECT_DEBUG_OUTPUT
+#define NEARBY_OBSTACLE_LIMIT 0.75
 //******************************************************************************
 using namespace common_lib;
 using namespace std::chrono_literals;
@@ -217,33 +215,36 @@ public:
       [&](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) { map_ = make_gridmap(*msg); });
     cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
       "/cmd_vel", rclcpp::QoS(10), [&](const geometry_msgs::msg::Twist::SharedPtr msg) {
-        log(now_vel_.linear.x,now_vel_.linear.y,now_vel_.angular.z,msg->linear.x,msg->linear.y,msg->angular.z,imu_vel_.angular.z,imu_vel_.linear.x,imu_vel_.linear.y);
+        log(
+          now_vel_.linear.x, now_vel_.linear.y, now_vel_.angular.z, msg->linear.x, msg->linear.y,
+          msg->angular.z, imu_vel_.angular.z, imu_vel_.linear.x, imu_vel_.linear.y);
       });
-    imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
-      IMU_TOPIC, rclcpp::QoS(10), [&](const sensor_msgs::msg::Imu::SharedPtr msg) {
-        imu_vel_.linear =
-          conversion_vector3<geometry_msgs::msg::Vector3, Vector3d>(msg->linear_acceleration);
-        imu_vel_.angular =
-          conversion_vector3<geometry_msgs::msg::Vector3, Vector3d>(msg->angular_velocity);
-        // double dt = (rclcpp::Clock().now() - pre_get_imu_time_).seconds();
-        // pre_get_imu_time_ = rclcpp::Clock().now();
-        // static Vector3d v = {0.0, 0.0, 0.0};
-        // const double alpha = 0.6;
-        // v.x = complementary_filter(now_vel_.linear.x, imu_vel_.linear.x, v.x, dt, alpha);
-        // v.y = complementary_filter(now_vel_.linear.y, imu_vel_.linear.y, v.y, dt, alpha);
-        // v.z = complementary_filter(now_vel_.linear.z, imu_vel_.linear.z, v.z, dt, alpha);
-        // vel_error_.linear = v - now_vel_.linear;
-        // vel_error_.angular.z = imu_vel_.angular.z - now_vel_.angular.z;
-        // log(now_vel_.linear.x,now_vel_.linear.y,now_vel_.angular.z,v.x,v.y,imu_vel_.angular.z,imu_vel_.linear.x,imu_vel_.linear.y,vel_error_.linear.x,vel_error_.linear.y,vel_error_.angular.z);
-// #if defined(USE_IMU_DEBUG)
-//         std::cout << "----------------------------------------------------------" << std::endl;
-//         std::cout << "now_vel:" << now_vel_ << std::endl;
-//         std::cout << "imu_vel:" << imu_vel_ << std::endl;
-//         std::cout << "v:" << v << std::endl;
-//         std::cout << "vel_error_.linear:" << vel_error_.linear << std::endl;
-//         std::cout << "vel_error_.angular.z:" << vel_error_.angular.z << std::endl;
-// #endif
-      });
+    imu_sub_ = this->create_subscription<
+      sensor_msgs::msg::
+        Imu>(IMU_TOPIC, rclcpp::QoS(10), [&](const sensor_msgs::msg::Imu::SharedPtr msg) {
+      imu_vel_.linear =
+        conversion_vector3<geometry_msgs::msg::Vector3, Vector3d>(msg->linear_acceleration);
+      imu_vel_.angular =
+        conversion_vector3<geometry_msgs::msg::Vector3, Vector3d>(msg->angular_velocity);
+      // double dt = (rclcpp::Clock().now() - pre_get_imu_time_).seconds();
+      // pre_get_imu_time_ = rclcpp::Clock().now();
+      // static Vector3d v = {0.0, 0.0, 0.0};
+      // const double alpha = 0.6;
+      // v.x = complementary_filter(now_vel_.linear.x, imu_vel_.linear.x, v.x, dt, alpha);
+      // v.y = complementary_filter(now_vel_.linear.y, imu_vel_.linear.y, v.y, dt, alpha);
+      // v.z = complementary_filter(now_vel_.linear.z, imu_vel_.linear.z, v.z, dt, alpha);
+      // vel_error_.linear = v - now_vel_.linear;
+      // vel_error_.angular.z = imu_vel_.angular.z - now_vel_.angular.z;
+      // log(now_vel_.linear.x,now_vel_.linear.y,now_vel_.angular.z,v.x,v.y,imu_vel_.angular.z,imu_vel_.linear.x,imu_vel_.linear.y,vel_error_.linear.x,vel_error_.linear.y,vel_error_.angular.z);
+      // #if defined(USE_IMU_DEBUG)
+      //         std::cout << "----------------------------------------------------------" << std::endl;
+      //         std::cout << "now_vel:" << now_vel_ << std::endl;
+      //         std::cout << "imu_vel:" << imu_vel_ << std::endl;
+      //         std::cout << "v:" << v << std::endl;
+      //         std::cout << "vel_error_.linear:" << vel_error_.linear << std::endl;
+      //         std::cout << "vel_error_.angular.z:" << vel_error_.angular.z << std::endl;
+      // #endif
+    });
     // timer
     path_planning_timer_ = this->create_wall_timer(1s * PLANNING_PERIOD, [&]() {
       if (!tf_buffer_.canTransform(
@@ -263,8 +264,6 @@ public:
 #if defined(NON_HOLONOMIC)
           now_vel_.linear.y = 0.0;
 #endif
-          planner_->set_model_error(make_eigen_vector6(
-            {0.0, 0.0, 0.0, 0.0, 0.0, 0.0}));
           planner_->set_grid_path(global_path_.value());
           if (target_pose_) {
 #if defined(PLANNING_DEBUG_OUTPUT)
@@ -297,7 +296,8 @@ public:
         }
       }
     });
-    init_data_logger({"odom_vx","odom_vy","odom_w","u_vx","u_vy","u_w","imu_w","imu_acc_x","imu_acc_y"});
+    init_data_logger(
+      {"odom_vx", "odom_vy", "odom_w", "u_vx", "u_vy", "u_w", "imu_w", "imu_acc_x", "imu_acc_y"});
   }
 
 private:
@@ -319,7 +319,7 @@ private:
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr goal_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
-  rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_sub_;//debug
+  rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_sub_;  //debug
   rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr end_sub_;
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr global_path_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
@@ -348,13 +348,27 @@ private:
     return present_velocity;
   }
 
-  std::vector<std::pair<Vector2d, double>> obstacles_;
+  struct obstacle_t
+  {
+    Vector2d pos;
+    double dist;
+    bool operator<(const obstacle_t & o) const { return o.dist < dist; };
+  };
+  std::priority_queue<obstacle_t> obstacles_;
+
+  void clear_obstacles()
+  {
+    std::priority_queue<obstacle_t> empty;
+    obstacles_ = empty;  //要素の削除
+  }
+
   void obstacles_detect(Pose3d robot_pose)
   {
     if (map_) {
       auto start = rclcpp::Clock().now();
+
       Vector2d robot = {robot_pose.position.x, robot_pose.position.y};
-      obstacles_.clear();
+      clear_obstacles();
 #pragma omp parallel for
       for (size_t y = 0; y < map_.value().info.height; y++) {
         for (size_t x = 0; x < map_.value().info.width; x++) {
@@ -363,39 +377,41 @@ private:
             double dist = (obstacle - robot).norm();
             if (dist < OBSTACLE_DETECT_DIST) {
 #pragma omp critical
-              obstacles_.push_back({obstacle, dist});
+              obstacles_.push({obstacle, dist});
             }
           }
         }
       }
-      size_t obstacles_size = obstacles_.size();
-      if (obstacles_size != 0) {
-        std::sort(
-          SORT_MODE, obstacles_.begin(), obstacles_.end(), [](const auto & a, const auto & b) {
-            return a.second < b.second;
-          });  // 距離が近い順にソート
-        if (obstacles_size > OBSTACLES_MAX_SIZE)
-          obstacles_.erase(
-            obstacles_.begin() + OBSTACLES_MAX_SIZE,
-            obstacles_.begin() +
-              obstacles_size);  // サイズオーバーした要素は削除(ロボットに近いもののみ制約に追加)
-        if (!target_pose_) {
-          visualization_msgs::msg::MarkerArray obstacles_marker;
-          obstacles_marker.markers.resize(OBSTACLES_MAX_SIZE);
-#pragma omp parallel for
-          for (size_t i = 0; i < OBSTACLES_MAX_SIZE; i++) {
-            Vector2d obs_p = {EXECUSION_POINT_VALUE, EXECUSION_POINT_VALUE};
-            if (i < obstacles_size) obs_p = {obstacles_[i].first.x, obstacles_[i].first.y};
-            obstacles_marker.markers.at(i) = make_point_maker(
-              make_header(MAP_FRAME, rclcpp::Clock().now()), obs_p, i,
-              make_color(1.0, 1.0, 0.0, 0.1), OBSTACLE_SIZE);
+      if (!target_pose_) {
+        visualization_msgs::msg::MarkerArray obstacles_marker;
+        obstacles_marker.markers.resize(OBSTACLES_MAX_SIZE);
+        obstacle_t pre_obs;
+        for (size_t i = 0; i < OBSTACLES_MAX_SIZE; i++) {
+          Vector2d obs_p = {EXECUSION_POINT_VALUE, EXECUSION_POINT_VALUE};
+          if (!obstacles_.empty()) {
+            if (i != 0) {
+              if ((pre_obs.pos - obstacles_.top().pos).norm() >= (NEARBY_OBSTACLE_LIMIT * OBSTACLE_SIZE))
+                obs_p = obstacles_.top().pos;
+              else {
+                i--;
+                obstacles_.pop();
+                continue;
+              }
+            }
+            else
+              obs_p = obstacles_.top().pos;
+            pre_obs = obstacles_.top();
+            obstacles_.pop();
           }
-          obstacles_pub_->publish(obstacles_marker);
+          obstacles_marker.markers.at(i) = make_point_maker(
+            make_header(MAP_FRAME, rclcpp::Clock().now()), obs_p, i, make_color(1.0, 1.0, 0.0, 0.1),
+            OBSTACLE_SIZE);
         }
+        obstacles_pub_->publish(obstacles_marker);
       }
+      // }
 #if defined(OBSTACLE_DETECT_DEBUG_OUTPUT)
       std::cout << "---------------------------------------------------" << std::endl;
-      std::cout << "obstacles size:" << obstacles_size << std::endl;
       std::cout << "obstacles size:" << obstacles_.size() << std::endl;
       std::cout << "obstacles detect time:" << (rclcpp::Clock().now() - start).seconds()
                 << std::endl;
@@ -429,15 +445,28 @@ private:
     using namespace casadi;
     using Sl = casadi::Slice;
     casadi::DM dm_obstacles = DM::zeros(2, OBSTACLES_MAX_SIZE);
-    size_t obstacles_size = obstacles_.size();
     visualization_msgs::msg::MarkerArray obstacles_marker;
     obstacles_marker.markers.resize(OBSTACLES_MAX_SIZE);
-#pragma omp parallel for
+    obstacle_t pre_obs;
     for (size_t i = 0; i < OBSTACLES_MAX_SIZE; i++) {
       Eigen::Vector2d obs_p_mat =
         make_eigen_vector2(Vector2d{EXECUSION_POINT_VALUE, EXECUSION_POINT_VALUE});
       casadi::DM dm_obs = DM::zeros(2);
-      if (i < obstacles_size) obs_p_mat << obstacles_[i].first.x, obstacles_[i].first.y;
+      if (!obstacles_.empty()) {
+        if (i != 0) {
+          if ((pre_obs.pos - obstacles_.top().pos).norm() >= (NEARBY_OBSTACLE_LIMIT * OBSTACLE_SIZE))
+            obs_p_mat << obstacles_.top().pos.x, obstacles_.top().pos.y;
+          else {
+            i--;
+            obstacles_.pop();
+            continue;
+          }
+        }
+        else
+          obs_p_mat << obstacles_.top().pos.x, obstacles_.top().pos.y;
+        pre_obs = obstacles_.top();
+        obstacles_.pop();
+      }
       std::copy(obs_p_mat.data(), obs_p_mat.data() + obs_p_mat.size(), dm_obs.ptr());
       dm_obstacles(Sl(), i) = dm_obs;
       obstacles_marker.markers.at(i) = make_point_maker(
