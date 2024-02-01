@@ -215,30 +215,34 @@ public:
     map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
       MAP_TOPIC, rclcpp::QoS(10).reliable(),
       [&](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) { map_ = make_gridmap(*msg); });
+    cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
+      "/cmd_vel", rclcpp::QoS(10), [&](const geometry_msgs::msg::Twist::SharedPtr msg) {
+        log(now_vel_.linear.x,now_vel_.linear.y,now_vel_.angular.z,msg->linear.x,msg->linear.y,msg->angular.z,imu_vel_.angular.z,imu_vel_.linear.x,imu_vel_.linear.y);
+      });
     imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
       IMU_TOPIC, rclcpp::QoS(10), [&](const sensor_msgs::msg::Imu::SharedPtr msg) {
         imu_vel_.linear =
           conversion_vector3<geometry_msgs::msg::Vector3, Vector3d>(msg->linear_acceleration);
         imu_vel_.angular =
           conversion_vector3<geometry_msgs::msg::Vector3, Vector3d>(msg->angular_velocity);
-        double dt = (rclcpp::Clock().now() - pre_get_imu_time_).seconds();
-        pre_get_imu_time_ = rclcpp::Clock().now();
-        static Vector3d v = {0.0, 0.0, 0.0};
-        const double alpha = 0.6;
-        v.x = complementary_filter(now_vel_.linear.x, imu_vel_.linear.x, v.x, dt, alpha);
-        v.y = complementary_filter(now_vel_.linear.y, imu_vel_.linear.y, v.y, dt, alpha);
+        // double dt = (rclcpp::Clock().now() - pre_get_imu_time_).seconds();
+        // pre_get_imu_time_ = rclcpp::Clock().now();
+        // static Vector3d v = {0.0, 0.0, 0.0};
+        // const double alpha = 0.6;
+        // v.x = complementary_filter(now_vel_.linear.x, imu_vel_.linear.x, v.x, dt, alpha);
+        // v.y = complementary_filter(now_vel_.linear.y, imu_vel_.linear.y, v.y, dt, alpha);
         // v.z = complementary_filter(now_vel_.linear.z, imu_vel_.linear.z, v.z, dt, alpha);
-        vel_error_.linear = v - now_vel_.linear;
-        vel_error_.angular.z = imu_vel_.angular.z - now_vel_.angular.z;
-        log(now_vel_.linear.x,now_vel_.linear.y,now_vel_.angular.z,v.x,v.y,imu_vel_.angular.z,vel_error_.linear.x,vel_error_.linear.y,vel_error_.angular.z);
-#if defined(USE_IMU_DEBUG)
-        std::cout << "----------------------------------------------------------" << std::endl;
-        std::cout << "now_vel:" << now_vel_ << std::endl;
-        std::cout << "imu_vel:" << imu_vel_ << std::endl;
-        std::cout << "v:" << v << std::endl;
-        std::cout << "vel_error_.linear:" << vel_error_.linear << std::endl;
-        std::cout << "vel_error_.angular.z:" << vel_error_.angular.z << std::endl;
-#endif
+        // vel_error_.linear = v - now_vel_.linear;
+        // vel_error_.angular.z = imu_vel_.angular.z - now_vel_.angular.z;
+        // log(now_vel_.linear.x,now_vel_.linear.y,now_vel_.angular.z,v.x,v.y,imu_vel_.angular.z,imu_vel_.linear.x,imu_vel_.linear.y,vel_error_.linear.x,vel_error_.linear.y,vel_error_.angular.z);
+// #if defined(USE_IMU_DEBUG)
+//         std::cout << "----------------------------------------------------------" << std::endl;
+//         std::cout << "now_vel:" << now_vel_ << std::endl;
+//         std::cout << "imu_vel:" << imu_vel_ << std::endl;
+//         std::cout << "v:" << v << std::endl;
+//         std::cout << "vel_error_.linear:" << vel_error_.linear << std::endl;
+//         std::cout << "vel_error_.angular.z:" << vel_error_.angular.z << std::endl;
+// #endif
       });
     // timer
     path_planning_timer_ = this->create_wall_timer(1s * PLANNING_PERIOD, [&]() {
@@ -293,7 +297,7 @@ public:
         }
       }
     });
-    init_data_logger({"odm_vx","odm_vy","odm_w","imu_vx","imu_vy","imu_w","error_x","error_y","error_w"});
+    init_data_logger({"odom_vx","odom_vy","odom_w","u_vx","u_vy","u_w","imu_w","imu_acc_x","imu_acc_y"});
   }
 
 private:
@@ -315,10 +319,11 @@ private:
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr goal_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_sub_;//debug
   rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr end_sub_;
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr global_path_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
-  // publishervel_error_
+  // publisher
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr init_path_pub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr opti_path_pub_;
   rclcpp::Publisher<extension_msgs::msg::TwistMultiArray>::SharedPtr opti_twists_pub_;

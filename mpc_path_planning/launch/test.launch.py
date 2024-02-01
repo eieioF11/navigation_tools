@@ -25,7 +25,7 @@ def generate_launch_description():
                 [os.path.join(pkg_dir, "launch"), "/mpc.launch.py"]
             ),
             launch_arguments={
-                'config': os.path.join(pkg_dir, "config", "sim_mpc_path_planning_param.yaml"),
+                'config': os.path.join(pkg_dir, "config", "test_mpc_path_planning_param.yaml"),
             }.items()
         ),
         Node(

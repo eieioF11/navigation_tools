@@ -11,9 +11,9 @@ lrf_to_grid_node:
         map_frame: "map"
       add_cell: false
       filter:
-        voxelgrid_size: 1.0
+        voxelgrid_size: 0.8
         z_max: 1.5
-        z_min: 0.3
+        z_min: 0.1
       grid_map_info:
         resolution: 0.1 #[m] def 0.05
         # origin: [-5.0,-5.0,0.0]
