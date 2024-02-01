@@ -16,13 +16,13 @@ mpc_path_planning_node:
       planning_period: 0.001 #[s]
       mpc:
         dt: 0.08 #[s] 0.135
-        horizon_time: 4.0
+        horizon_time: 2.0
         # pos_error:      0.035 #0.015 # 0.01
         pos_error: 2.5 #[m] 0.8
         # ロボット制約
         forward_only: false
         min_vel: 0.0 #[m/s]  最小速度制限(0~)
-        max_vel: 0.55 #[m/s]
+        max_vel: 0.5 #[m/s]
         min_angular: 0.0 #[rad/s] 最小速度制限(0~)
         max_angular: 2.84 #[rad/s] 2.84
         max_acc: 4.9 #[m/s^s] 1.1 4.9 3.9 0.98 2.9
@@ -35,7 +35,7 @@ mpc_path_planning_node:
           state: [0.0, 0.0, 0.0, 20.0, 20.0, 10.0] #ステートコストの重み [10.0, 0.0, 10.0, 800.0, 800.0, 10.0]
           final_state: [0.5, 0.0, 0.5, 80.0, 80.0, 60.0] #終端コストの重み     [10.0, 0.0, 10.0, 800.0, 800.0, 10.0]
           ref_state: [0.0, 0.0, 0.0, 100.0, 100.0, 60.0] #初期経路(grid_path)とのエラーコストの重み
-          control: [5.0, 0.0, 20.0] #制御量コストの重み
+          control: [5.0, 0.0, 10.0] #制御量コストの重み
           diff_control: [90.0, 0.0, 60.0] #制御量変化コストの重み
         warm_start:
           latest_gpl_norm: 0.05 #[m] 最後に初期値計算を行った地点からlatest_gpl_norm[m]離れたら
@@ -56,7 +56,7 @@ global_path_planning_node:
   ros__parameters:
     global_path_planning:
       topic_name:
-        map: "/storage_map"
+        map: "/lrf/map"
         target: "/goal_pose"
         global_path: "global_path_planning/path"
       tf_frame:

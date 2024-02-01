@@ -9,6 +9,7 @@ lrf_to_grid_node:
         # cloud: "/livox/lidar"
       tf_frame:
         map_frame: "map"
+        robot_frame: "base_link"
       add_cell: false
       filter:
         voxelgrid_size: 0.2
