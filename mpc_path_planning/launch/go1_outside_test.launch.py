@@ -17,16 +17,16 @@ def generate_launch_description():
     list = [
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
-                [os.path.join(pkg_dir, "launch"), "/rviz.launch.py"]
-            ),
-        ),
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(
                 [os.path.join(pkg_dir, "launch"), "/mpc.launch.py"]
             ),
             launch_arguments={
                 'config': os.path.join(pkg_dir, "config", "robot_outside_mpc_path_planning_param.yaml"),
             }.items()
+        ),
+        Node(
+            package='rviz2',
+            executable='rviz2',
+            arguments=['-d', os.path.join(pkg_dir, 'rviz','test_outside.rviz')],
         ),
         Node(
             package="tf2_ros",

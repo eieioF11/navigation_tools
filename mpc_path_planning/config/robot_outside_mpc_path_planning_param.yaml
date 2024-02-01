@@ -15,7 +15,7 @@ mpc_path_planning_node:
         robot_frame: "base_link"
       planning_period: 0.001 #[s]
       mpc:
-        dt: 0.08 #[s] 0.135
+        dt: 0.1 #[s] 0.135
         horizon_time: 2.0
         # pos_error:      0.035 #0.015 # 0.01
         pos_error: 2.5 #[m] 0.8
@@ -28,8 +28,8 @@ mpc_path_planning_node:
         max_acc: 4.9 #[m/s^s] 1.1 4.9 3.9 0.98 2.9
         max_angular_acc: 4.9 #[rad/s^s] 1.0 4.9
         # モデルパラメータ
-        xy_vel_time_constant: 1.8 #1.8
-        theta_vel_time_constant: 0.0
+        xy_vel_time_constant: 1.8 #[s] 並進速度の時定数
+        theta_vel_time_constant: 0.0 #[s] 角速度の時定数
         #重み[vx,vy,w,x,y,x]
         weight:
           state: [0.0, 0.0, 0.0, 20.0, 20.0, 10.0] #ステートコストの重み [10.0, 0.0, 10.0, 800.0, 800.0, 10.0]
@@ -77,9 +77,9 @@ control_node:
         map_frame: "map"
         robot_frame: "base_link"
       control_period: 0.001 #[s]
-      mpc_dt: 0.08
+      mpc_dt: 0.1
       goal:
-        pos_range: 0.14 #[m] 0.05
-        angle_range: 4.0 #[deg] 0.5
-        min_vel_range: 0.15 #[m/s] 0.005
-        min_angular_range: 0.15 #[rad/s] 0.01
+        pos_range: 0.14 #[m]
+        angle_range: 4.0 #[deg]
+        min_vel_range: 0.15 #[m/s]
+        min_angular_range: 0.15 #[rad/s]
