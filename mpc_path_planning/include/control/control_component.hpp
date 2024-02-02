@@ -15,22 +15,22 @@ using namespace std::chrono_literals;
 class Control : public ExtensionNode
 {
 public:
-  Control(const rclcpp::NodeOptions & options) : Control("", options) {}
+  Control(const rclcpp::NodeOptions &options) : Control("", options) {}
   Control(
-    const std::string & name_space = "",
-    const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
-  : ExtensionNode("control_node", name_space, options),
-    tf_buffer_(this->get_clock()),
-    listener_(tf_buffer_)
+      const std::string &name_space = "",
+      const rclcpp::NodeOptions &options = rclcpp::NodeOptions())
+      : ExtensionNode("control_node", name_space, options),
+        tf_buffer_(this->get_clock()),
+        listener_(tf_buffer_)
   {
     RCLCPP_INFO(this->get_logger(), "start control_node");
     // get param
     std::string OPTIPATH_TOPIC =
-      param<std::string>("control.topic_name.opti_path", "mpc_path_planning/opti_path");
+        param<std::string>("control.topic_name.opti_path", "mpc_path_planning/opti_path");
     std::string OPTITWISTS_TOPIC =
-      param<std::string>("control.topic_name.opti_twists", "mpc_path_planning/twists");
+        param<std::string>("control.topic_name.opti_twists", "mpc_path_planning/twists");
     std::string TARGET_TOPIC =
-      param<std::string>("mpc_path_planning.topic_name.target", "/goal_pose");
+        param<std::string>("mpc_path_planning.topic_name.target", "/goal_pose");
     std::string CMD_VEL_TOPIC = param<std::string>("control.topic_name.cmd_vel", "/cmd_vel");
     std::string ODOM_TOPIC = param<std::string>("control.topic_name.odom", "/odom");
     // frame
@@ -51,35 +51,39 @@ public:
     pre_control_time_ = this->get_clock()->now();
     // publisher
     end_pub_ = this->create_publisher<std_msgs::msg::Empty>(
-      "mpc_path_planning/end", rclcpp::QoS(10).reliable());
+        "mpc_path_planning/end", rclcpp::QoS(10).reliable());
     cmd_vel_pub_ =
-      this->create_publisher<geometry_msgs::msg::Twist>(CMD_VEL_TOPIC, rclcpp::QoS(10));
+        this->create_publisher<geometry_msgs::msg::Twist>(CMD_VEL_TOPIC, rclcpp::QoS(10));
     linear_vel_pub_ = this->create_publisher<std_msgs::msg::Float32>(
-      "mpc_path_planning/linear_vel", rclcpp::QoS(5));
+        "mpc_path_planning/linear_vel", rclcpp::QoS(5));
     angular_vel_pub_ = this->create_publisher<std_msgs::msg::Float32>(
-      "mpc_path_planning/angular_vel", rclcpp::QoS(5));
+        "mpc_path_planning/angular_vel", rclcpp::QoS(5));
     perfomance_pub_ = this->create_publisher<std_msgs::msg::Float32>(
-      "mpc_path_planning/control_period", rclcpp::QoS(5));
+        "mpc_path_planning/control_period", rclcpp::QoS(5));
     control_time_pub_ = this->create_publisher<std_msgs::msg::Float32>(
-      "mpc_path_planning/control_time", rclcpp::QoS(5));
+        "mpc_path_planning/control_time", rclcpp::QoS(5));
     cmd_vel_pub_->publish(stop());
     // subscriber
     goal_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
-      TARGET_TOPIC, rclcpp::QoS(10), [&](geometry_msgs::msg::PoseStamped::SharedPtr msg) {
+        TARGET_TOPIC, rclcpp::QoS(10), [&](geometry_msgs::msg::PoseStamped::SharedPtr msg)
+        {
         target_pose_ = make_pose(msg->pose);
-        cmd_vel_pub_->publish(stop());
-      });
+        cmd_vel_pub_->publish(stop()); });
     opti_path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
-      OPTIPATH_TOPIC, rclcpp::QoS(10).reliable(),
-      [&](const nav_msgs::msg::Path::SharedPtr msg) { opti_path_ = *msg; });
+        OPTIPATH_TOPIC, rclcpp::QoS(10).reliable(),
+        [&](const nav_msgs::msg::Path::SharedPtr msg)
+        { opti_path_ = *msg; });
     opti_twists_sub_ = this->create_subscription<extension_msgs::msg::TwistMultiArray>(
-      OPTITWISTS_TOPIC, rclcpp::QoS(10),
-      [&](extension_msgs::msg::TwistMultiArray::SharedPtr msg) { opti_twists_ = *msg; });
+        OPTITWISTS_TOPIC, rclcpp::QoS(10),
+        [&](extension_msgs::msg::TwistMultiArray::SharedPtr msg)
+        { opti_twists_ = *msg; });
     odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
-      ODOM_TOPIC, rclcpp::QoS(10),
-      [&](nav_msgs::msg::Odometry::SharedPtr msg) { odom_vel_ = make_twist(*msg); });
+        ODOM_TOPIC, rclcpp::QoS(10),
+        [&](nav_msgs::msg::Odometry::SharedPtr msg)
+        { odom_vel_ = make_twist(*msg); });
     // timer
-    control_timer_ = this->create_wall_timer(1s * CONTROL_PERIOD, [&]() {
+    control_timer_ = this->create_wall_timer(1s * CONTROL_PERIOD, [&]()
+                                             {
       if (!tf_buffer_.canTransform(
             ROBOT_FRAME, MAP_FRAME, rclcpp::Time(0),
             tf2::durationFromSec(1.0))) {  // 変換無いよ
@@ -138,6 +142,7 @@ public:
           cmd_vel.angular.z = v.z;
         }
         // Pose3d target_pose = opti_path.points.back().pose;
+        target_pose_.position.z=base_link_pose.position.z=0.0;
         double target_dist = Vector3d::distance(target_pose_.position, base_link_pose.position);
         double target_diff_angle =
           std::abs(target_pose_.orientation.get_rpy().z - base_link_pose.orientation.get_rpy().z);
@@ -185,11 +190,10 @@ public:
       angular_vel_pub_->publish(make_float32(angular));
       perfomance_pub_->publish(make_float32(
         unit_cast<unit::time::s, unit::time::ms>((now_time - pre_control_time_).seconds())));
-      pre_control_time_ = this->get_clock()->now();
-    });
+      pre_control_time_ = this->get_clock()->now(); });
     init_data_logger(
-      {"u_vx", "u_vy", "u_w", "odom_vx", "odom_vy", "odom_w", "t_x", "t_y", "t_theta", "x", "y",
-       "theta"});
+        {"u_vx", "u_vy", "u_w", "odom_vx", "odom_vy", "odom_w", "t_x", "t_y", "t_theta", "x", "y",
+         "theta"});
   }
 
 private:

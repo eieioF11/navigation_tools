@@ -16,6 +16,8 @@
 #include <std_msgs/msg/empty.hpp>
 // opencv
 #include <opencv2/opencv.hpp>
+// OpenMP
+#include <omp.h>
 
 #include "common_lib/ros2_utility/extension_msgs_util.hpp"
 #include "common_lib/ros2_utility/msg_util.hpp"
@@ -194,6 +196,7 @@ private:
     double min, max;
     cv::Point min_p, max_p;
     cv::minMaxLoc(convert_dist_img, &min, &max, &min_p, &max_p);
+#pragma omp parallel for
     for (size_t y = 0; y < dist_map_msg_.info.height; y++) {
       for (size_t x = 0; x < dist_map_msg_.info.width; x++) {
         float pixel = transform_range<float>(

@@ -54,7 +54,7 @@
 #define CONTROL_DEBUG_OUTPUT
 // #define USE_IMU_DEBUG
 // #define OBSTACLE_DETECT_DEBUG_OUTPUT
-#define NEARBY_OBSTACLE_LIMIT 0.75
+#define NEARBY_OBSTACLE_LIMIT 0.8
 //******************************************************************************
 using namespace common_lib;
 using namespace std::chrono_literals;
