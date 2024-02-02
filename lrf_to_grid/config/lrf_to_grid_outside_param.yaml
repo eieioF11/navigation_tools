@@ -18,5 +18,5 @@ lrf_to_grid_node:
       grid_map_info:
         resolution: 0.2 #[m] def 0.05
         # origin: [-5.0,-5.0,0.0]
-        width: 15.0 #[m]
-        height: 15.0 #[m]
+        width: 10.0 #[m]
+        height: 10.0 #[m]
