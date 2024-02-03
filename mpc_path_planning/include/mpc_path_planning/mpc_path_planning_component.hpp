@@ -75,7 +75,6 @@ public:
     std::string TARGET_TOPIC =
       param<std::string>("mpc_path_planning.topic_name.target", "/goal_pose");
     std::string ODOM_TOPIC = param<std::string>("mpc_path_planning.topic_name.odom", "/odom");
-    std::string IMU_TOPIC = param<std::string>("mpc_path_planning.topic_name.imu", "/imu");
     std::string INITPATH_TOPIC =
       param<std::string>("mpc_path_planning.topic_name.init_path", "mpc_path_planning/init_path");
     std::string GLOBALPATH_TOPIC =
@@ -155,7 +154,6 @@ public:
     OBSTACLES_MAX_SIZE = (size_t)param<int>("mpc_path_planning.obstacle_detect.list_size", 5);
     // init
     RCLCPP_INFO(this->get_logger(), "Initialization !");
-    pre_get_imu_time_ = rclcpp::Clock().now();
     target_pose_ = std::nullopt;
     vel_error_.linear = {0.0, 0.0, 0.0};
     vel_error_.angular = {0.0, 0.0, 0.0};
@@ -217,34 +215,8 @@ public:
       "/cmd_vel", rclcpp::QoS(10), [&](const geometry_msgs::msg::Twist::SharedPtr msg) {
         log(
           now_vel_.linear.x, now_vel_.linear.y, now_vel_.angular.z, msg->linear.x, msg->linear.y,
-          msg->angular.z, imu_vel_.angular.z, imu_vel_.linear.x, imu_vel_.linear.y);
+          msg->angular.z);
       });
-    imu_sub_ = this->create_subscription<
-      sensor_msgs::msg::
-        Imu>(IMU_TOPIC, rclcpp::QoS(10), [&](const sensor_msgs::msg::Imu::SharedPtr msg) {
-      imu_vel_.linear =
-        conversion_vector3<geometry_msgs::msg::Vector3, Vector3d>(msg->linear_acceleration);
-      imu_vel_.angular =
-        conversion_vector3<geometry_msgs::msg::Vector3, Vector3d>(msg->angular_velocity);
-      // double dt = (rclcpp::Clock().now() - pre_get_imu_time_).seconds();
-      // pre_get_imu_time_ = rclcpp::Clock().now();
-      // static Vector3d v = {0.0, 0.0, 0.0};
-      // const double alpha = 0.6;
-      // v.x = complementary_filter(now_vel_.linear.x, imu_vel_.linear.x, v.x, dt, alpha);
-      // v.y = complementary_filter(now_vel_.linear.y, imu_vel_.linear.y, v.y, dt, alpha);
-      // v.z = complementary_filter(now_vel_.linear.z, imu_vel_.linear.z, v.z, dt, alpha);
-      // vel_error_.linear = v - now_vel_.linear;
-      // vel_error_.angular.z = imu_vel_.angular.z - now_vel_.angular.z;
-      // log(now_vel_.linear.x,now_vel_.linear.y,now_vel_.angular.z,v.x,v.y,imu_vel_.angular.z,imu_vel_.linear.x,imu_vel_.linear.y,vel_error_.linear.x,vel_error_.linear.y,vel_error_.angular.z);
-      // #if defined(USE_IMU_DEBUG)
-      //         std::cout << "----------------------------------------------------------" << std::endl;
-      //         std::cout << "now_vel:" << now_vel_ << std::endl;
-      //         std::cout << "imu_vel:" << imu_vel_ << std::endl;
-      //         std::cout << "v:" << v << std::endl;
-      //         std::cout << "vel_error_.linear:" << vel_error_.linear << std::endl;
-      //         std::cout << "vel_error_.angular.z:" << vel_error_.angular.z << std::endl;
-      // #endif
-    });
     // timer
     path_planning_timer_ = this->create_wall_timer(1s * PLANNING_PERIOD, [&]() {
       if (!tf_buffer_.canTransform(
@@ -297,7 +269,7 @@ public:
       }
     });
     init_data_logger(
-      {"odom_vx", "odom_vy", "odom_w", "u_vx", "u_vy", "u_w", "imu_w", "imu_acc_x", "imu_acc_y"});
+      {"odom_vx", "odom_vy", "odom_w", "u_vx", "u_vy", "u_w"});
   }
 
 private:
@@ -313,7 +285,6 @@ private:
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener listener_;
   // timer
-  rclcpp::Time pre_get_imu_time_;
   rclcpp::TimerBase::SharedPtr path_planning_timer_;
   // subscriber
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
@@ -322,7 +293,6 @@ private:
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_sub_;  //debug
   rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr end_sub_;
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr global_path_sub_;
-  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
   // publisher
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr init_path_pub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr opti_path_pub_;
@@ -332,21 +302,12 @@ private:
   // twist
   Twistd now_vel_;
   Twistd vel_error_;
-  Twistd imu_vel_;
   // pose
   std::optional<Pose3d> target_pose_;
   // planner
   std::optional<GridMap> map_;
   std::optional<Pathd> global_path_;
   std::shared_ptr<MPCPathPlanner> planner_;
-
-  double complementary_filter(
-    const double & now_vel, const double & now_acc, const double & last_vel, const double & dt,
-    const double & alpha)
-  {
-    double present_velocity = alpha * (last_vel + dt * now_acc) + (1 - alpha) * now_vel;
-    return present_velocity;
-  }
 
   struct obstacle_t
   {
