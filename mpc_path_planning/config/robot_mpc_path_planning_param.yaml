@@ -51,6 +51,7 @@ mpc_path_planning_node:
         dist: 5.0 #[m]
         obstacle_size: 1.0 #[m]
         list_size: 25
+        nearby_obstacle_limit: 0.8 #[m]
 
 global_path_planning_node:
   ros__parameters:

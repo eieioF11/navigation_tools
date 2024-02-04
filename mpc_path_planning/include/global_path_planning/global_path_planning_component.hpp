@@ -124,11 +124,10 @@ public:
         if (map_msg_) {
           calc_distance_map();
           planner_->set_map(make_gridmap(dist_map_msg_));
-          PathPointd start, end;
           RCLCPP_INFO_CHANGE(1, this->get_logger(), "get map");
           if (target_pose_) {
-            start.pose = base_link_pose_;
-            end.pose = target_pose_.value();
+            PathPointd start = make_pathpoint<double>(base_link_pose_);
+            PathPointd end = make_pathpoint<double>(target_pose_.value());
             start_planning_timer_ = rclcpp::Clock().now();
             Pathd grid_path = planner_->path_planning(start, end);
             global_path_pub_->publish(
@@ -146,8 +145,6 @@ private:
   std::string MAP_FRAME;
   std::string ROBOT_FRAME;
   double CONTROL_PERIOD;
-  double MIN_VEL;
-  double MIN_ANGULAR;
   bool gen_distance_map_;
   // tf
   tf2_ros::Buffer tf_buffer_;
