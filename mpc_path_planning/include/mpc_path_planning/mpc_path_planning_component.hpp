@@ -344,13 +344,13 @@ private:
       size_t start_y = static_cast<size_t>(start_cell.y);
       size_t end_x = static_cast<size_t>(end_cell.x);
       size_t end_y = static_cast<size_t>(end_cell.y);
-      if (!(0 <= start_x && start_x < map_.value().info.width))
+      if (!(0 <= start_cell.x && start_cell.x < map_.value().info.width))
         start_x = 0;
-      if (!(0 <= start_y && start_y < map_.value().info.height))
+      if (!(0 <= start_cell.y && start_cell.y < map_.value().info.height))
         start_y = 0;
-      if (!(0 <= end_x && end_x < map_.value().info.width))
+      if (!(0 <= end_cell.x && end_cell.x < map_.value().info.width))
         end_x = map_.value().info.width;
-      if (!(0 <= end_y && end_y < map_.value().info.height))
+      if (!(0 <= end_cell.y && end_cell.y < map_.value().info.height))
         end_y = map_.value().info.height;
 #if defined(OBSTACLE_DETECT_DEBUG_OUTPUT)
       std::cout << "---------------------------------------------------" << std::endl;
@@ -379,10 +379,11 @@ private:
           Vector2d obs_p = {EXECUSION_POINT_VALUE, EXECUSION_POINT_VALUE};
           if (!obstacles_.empty())
           {
+            obstacle_t obstacle = obstacles_.top();
             if (i != 0)
             {
-              if ((pre_obs.pos - obstacles_.top().pos).norm() >= (NEARBY_OBSTACLE_LIMIT * OBSTACLE_SIZE))
-                obs_p = obstacles_.top().pos;
+              if ((pre_obs.pos - obstacle.pos).norm() >= (NEARBY_OBSTACLE_LIMIT * OBSTACLE_SIZE))
+                obs_p = obstacle.pos;
               else
               {
                 i--;
@@ -391,8 +392,8 @@ private:
               }
             }
             else
-              obs_p = obstacles_.top().pos;
-            pre_obs = obstacles_.top();
+              obs_p = obstacle.pos;
+            pre_obs = obstacle;
             obstacles_.pop();
           }
           obstacles_marker_.markers.at(i) = make_point_maker(
@@ -437,17 +438,18 @@ private:
     using Sl = casadi::Slice;
     casadi::DM dm_obstacles = DM::zeros(2, OBSTACLES_MAX_SIZE);
     obstacle_t pre_obs;
+    casadi::DM dm_obs = DM::zeros(2);
     for (size_t i = 0; i < OBSTACLES_MAX_SIZE; i++)
     {
       Eigen::Vector2d obs_p_mat =
           make_eigen_vector2(Vector2d{EXECUSION_POINT_VALUE, EXECUSION_POINT_VALUE});
-      casadi::DM dm_obs = DM::zeros(2);
       if (!obstacles_.empty())
       {
+        obstacle_t obstacle = obstacles_.top();
         if (i != 0)
         {
-          if ((pre_obs.pos - obstacles_.top().pos).norm() >= (NEARBY_OBSTACLE_LIMIT * OBSTACLE_SIZE))
-            obs_p_mat << obstacles_.top().pos.x, obstacles_.top().pos.y;
+          if ((pre_obs.pos - obstacle.pos).norm() >= (NEARBY_OBSTACLE_LIMIT * OBSTACLE_SIZE))
+            obs_p_mat << obstacle.pos.x, obstacle.pos.y;
           else
           {
             i--;
@@ -456,8 +458,8 @@ private:
           }
         }
         else
-          obs_p_mat << obstacles_.top().pos.x, obstacles_.top().pos.y;
-        pre_obs = obstacles_.top();
+          obs_p_mat << obstacle.pos.x, obstacle.pos.y;
+        pre_obs = obstacle;
         obstacles_.pop();
       }
       std::copy(obs_p_mat.data(), obs_p_mat.data() + obs_p_mat.size(), dm_obs.ptr());
