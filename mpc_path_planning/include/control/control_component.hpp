@@ -48,6 +48,12 @@ public:
     RCLCPP_INFO(this->get_logger(), "Initialization !");
     opti_twists_ = std::nullopt;
     opti_path_ = std::nullopt;
+    if (approx_zero(MPC_DT))
+    {
+      RCLCPP_ERROR(this->get_logger(), "MPC_DT is 0.0");
+      return;
+    }
+    inv_MPC_DT = 1.0 / MPC_DT;
     pre_control_time_ = this->get_clock()->now();
     // publisher
     end_pub_ = this->create_publisher<std_msgs::msg::Empty>(
@@ -107,7 +113,7 @@ public:
         auto duration = now_time - opti_twists_.value().header.stamp;
         double control_time = duration.seconds();
         if (control_time < 0) control_time = 0;
-        size_t n0 = std::round(control_time / MPC_DT);
+        size_t n0 = std::round(control_time * inv_MPC_DT);
         control_time_pub_->publish(
           make_float32(unit_cast<unit::time::s, unit::time::ms>(control_time)));
         if (n0 < opti_path.points.size()) {
@@ -125,7 +131,7 @@ public:
           Vector3d v1 = {target_twist1.linear.x, target_twist1.linear.y, target_twist1.angular.z};
           double t = (control_time - MPC_DT * n0);
           if (t < 0) t = 0;
-          Vector3d v = v0 + ((v1 - v0) / MPC_DT) * t;  // 線形補間
+          Vector3d v = v0 + ((v1 - v0) * inv_MPC_DT) * t;  // 線形補間
 #if defined(CONTROL_DEBUG_OUTPUT)
           std::cout << "t:" << t << std::endl;
           std::cout << "v:" << v << std::endl;
@@ -141,7 +147,6 @@ public:
           cmd_vel.linear.y = v_xy.y;
           cmd_vel.angular.z = v.z;
         }
-        // Pose3d target_pose = opti_path.points.back().pose;
         target_pose_.position.z=base_link_pose.position.z=0.0;
         double target_dist = Vector3d::distance(target_pose_.position, base_link_pose.position);
         double target_diff_angle =
@@ -183,7 +188,11 @@ public:
           !cmd_vel.angular.has_nan())
           cmd_vel_pub_->publish(make_geometry_twist(cmd_vel));
         else
+        {
+          RCLCPP_WARN(this->get_logger(), "error cmd_vel inf or nan !");
+          std::cout << "cmd_vel:" << cmd_vel << std::endl;
           cmd_vel_pub_->publish(stop());
+        }
       } else
         cmd_vel_pub_->publish(stop());
       linear_vel_pub_->publish(make_float32(vel));
@@ -192,8 +201,7 @@ public:
         unit_cast<unit::time::s, unit::time::ms>((now_time - pre_control_time_).seconds())));
       pre_control_time_ = this->get_clock()->now(); });
     init_data_logger(
-        {"u_vx", "u_vy", "u_w", "odom_vx", "odom_vy", "odom_w", "t_x", "t_y", "t_theta", "x", "y",
-         "theta"});
+        {"u_vx", "u_vy", "u_w", "odom_vx", "odom_vy", "odom_w", "t_x", "t_y", "t_theta", "x", "y", "theta"});
   }
 
 private:
@@ -202,6 +210,7 @@ private:
   std::string ROBOT_FRAME;
   double CONTROL_PERIOD;
   double MPC_DT;
+  double inv_MPC_DT;
   double GOAL_POS_RANGE;
   double GOAL_ANGLE_RANGE;
   double GOAL_MIN_VEL_RANGE;

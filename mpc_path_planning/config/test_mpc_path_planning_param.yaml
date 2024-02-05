@@ -47,9 +47,10 @@ mpc_path_planning_node:
           acceptable_tol: 0.000001 #収束許容値 def 0.000001
           compl_inf_tol: 0.0001 #相補性条件の「許容」しきい値 def 0.0001
       obstacle_detect:
-        dist: 5.0 #[m]
+        dist: 4.0 #[m]
         obstacle_size: 0.5 #[m]
         list_size: 25
+        nearby_obstacle_limit: 0.8 #[m]
 
 global_path_planning_node:
   ros__parameters:
