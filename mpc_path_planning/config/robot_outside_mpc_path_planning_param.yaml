@@ -15,14 +15,14 @@ mpc_path_planning_node:
         robot_frame: "base_link"
       planning_period: 0.01 #[s]
       mpc:
-        dt: 0.135 #[s] 0.135
+        dt: 0.15 #[s] 0.135
         horizon_time: 2.5
         # pos_error:      0.035 #0.015 # 0.01
         pos_error: 2.5 #[m] 0.8
         # ロボット制約
         forward_only: false
         min_vel: 0.0 #[m/s]  最小速度制限(0~)
-        max_vel: 0.42 #[m/s]
+        max_vel: 0.4 #[m/s]
         min_angular: 0.0 #[rad/s] 最小速度制限(0~)
         max_angular: 2.84 #[rad/s] 2.84
         max_acc: 4.9 #[m/s^s] 1.1 4.9 3.9 0.98 2.9
@@ -44,14 +44,14 @@ mpc_path_planning_node:
         ipopt: #ソルバー設定
           sb: "yes" # コンソールにヘッダを出力しない
           linear_solver: "ma27" # mumpsは遅い ma27はHSLライブラリ必要 (mumps:40msくらい,ma27:10msくらい)
-          max_iter: 5000 #最大反復回数 def 500
-          acceptable_tol: 0.000001 #収束許容値 def 0.000001
-          compl_inf_tol: 0.0001 #相補性条件の「許容」しきい値 def 0.0001
+          max_iter: 500 #最大反復回数 def 500
+          acceptable_tol: 0.00001 #収束許容値 def 0.000001
+          compl_inf_tol: 0.01 #相補性条件の「許容」しきい値 def 0.0001
       obstacle_detect:
-        dist: 5.0 #[m]
-        obstacle_size: 0.8 #[m]
-        list_size: 15
-        nearby_obstacle_limit: 0.8 #[m]
+        dist: 3.0 #[m]
+        obstacle_size: 0.75 #[m]
+        list_size: 20
+        nearby_obstacle_limit: 0.75 #[m]
 
 global_path_planning_node:
   ros__parameters:
@@ -78,9 +78,9 @@ control_node:
         map_frame: "map"
         robot_frame: "base_link"
       control_period: 0.005 #[s]
-      mpc_dt: 0.135
+      mpc_dt: 0.15
       goal:
-        pos_range: 0.3 #[m]
+        pos_range: 0.25 #[m]
         angle_range: 6.0 #[deg]
         min_vel_range: 0.15 #[m/s]
         min_angular_range: 0.15 #[rad/s]
