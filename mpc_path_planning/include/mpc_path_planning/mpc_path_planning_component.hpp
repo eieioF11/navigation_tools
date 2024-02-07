@@ -193,6 +193,8 @@ public:
       "mpc_path_planning/ave_solve_time", rclcpp::QoS(5));
     obstacles_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
       "mpc_path_planning/obstacles", rclcpp::QoS(5));
+    mpc_dt_pub_ = this->create_publisher<std_msgs::msg::Float32>(
+      "mpc_path_planning/dt", rclcpp::QoS(10).reliable());
     // subscriber
     goal_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
       TARGET_TOPIC, rclcpp::QoS(10), [&](geometry_msgs::msg::PoseStamped::SharedPtr msg) {
@@ -264,6 +266,7 @@ public:
               // publish opti path
               auto [o_ppath, o_vpath, o_apath] =
                 make_msg_paths(make_header(MAP_FRAME, rclcpp::Clock().now()), opti_path);
+              mpc_dt_pub_->publish(make_float32(mpc_config_.dt));
               opti_path_pub_->publish(o_ppath);
               opti_twists_pub_->publish(o_vpath);
               //debug
@@ -312,6 +315,7 @@ private:
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr init_path_pub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr opti_path_pub_;
   rclcpp::Publisher<extension_msgs::msg::TwistMultiArray>::SharedPtr opti_twists_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr mpc_dt_pub_;
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr perfomance_pub_;
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr perfomance_ave_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr obstacles_pub_;

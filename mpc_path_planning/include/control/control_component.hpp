@@ -6,22 +6,22 @@ using namespace std::chrono_literals;
 class Control : public ExtensionNode
 {
 public:
-  Control(const rclcpp::NodeOptions &options) : Control("", options) {}
+  Control(const rclcpp::NodeOptions & options) : Control("", options) {}
   Control(
-      const std::string &name_space = "",
-      const rclcpp::NodeOptions &options = rclcpp::NodeOptions())
-      : ExtensionNode("control_node", name_space, options),
-        tf_buffer_(this->get_clock()),
-        listener_(tf_buffer_)
+    const std::string & name_space = "",
+    const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+  : ExtensionNode("control_node", name_space, options),
+    tf_buffer_(this->get_clock()),
+    listener_(tf_buffer_)
   {
     RCLCPP_INFO(this->get_logger(), "start control_node");
     // get param
     std::string OPTIPATH_TOPIC =
-        param<std::string>("control.topic_name.opti_path", "mpc_path_planning/opti_path");
+      param<std::string>("control.topic_name.opti_path", "mpc_path_planning/opti_path");
     std::string OPTITWISTS_TOPIC =
-        param<std::string>("control.topic_name.opti_twists", "mpc_path_planning/twists");
+      param<std::string>("control.topic_name.opti_twists", "mpc_path_planning/twists");
     std::string TARGET_TOPIC =
-        param<std::string>("mpc_path_planning.topic_name.target", "/goal_pose");
+      param<std::string>("mpc_path_planning.topic_name.target", "/goal_pose");
     std::string CMD_VEL_TOPIC = param<std::string>("control.topic_name.cmd_vel", "/cmd_vel");
     std::string ODOM_TOPIC = param<std::string>("control.topic_name.odom", "/odom");
     // frame
@@ -29,7 +29,7 @@ public:
     ROBOT_FRAME = param<std::string>("control.tf_frame.robot_frame", "base_link");
     // setup
     CONTROL_PERIOD = param<double>("control.control_period", 0.001);
-    MPC_DT = param<double>("control.mpc_dt", 0.001);
+    // MPC_DT = param<double>("control.mpc_dt", 0.001);
     // 収束判定
     GOAL_POS_RANGE = param<double>("control.goal.pos_range", 0.01);
     GOAL_ANGLE_RANGE = unit_cast<unit::angle::rad>(param<double>("control.goal.angle_range", 0.1));
@@ -39,48 +39,49 @@ public:
     RCLCPP_INFO(this->get_logger(), "Initialization !");
     opti_twists_ = std::nullopt;
     opti_path_ = std::nullopt;
-    if (approx_zero(MPC_DT))
-    {
-      RCLCPP_ERROR(this->get_logger(), "MPC_DT is 0.0");
-      return;
-    }
+    MPC_DT = 0.1;
     inv_MPC_DT = 1.0 / MPC_DT;
     pre_control_time_ = this->get_clock()->now();
     // publisher
     end_pub_ = this->create_publisher<std_msgs::msg::Empty>(
-        "mpc_path_planning/end", rclcpp::QoS(10).reliable());
+      "mpc_path_planning/end", rclcpp::QoS(10).reliable());
     cmd_vel_pub_ =
-        this->create_publisher<geometry_msgs::msg::Twist>(CMD_VEL_TOPIC, rclcpp::QoS(10));
+      this->create_publisher<geometry_msgs::msg::Twist>(CMD_VEL_TOPIC, rclcpp::QoS(10));
     linear_vel_pub_ = this->create_publisher<std_msgs::msg::Float32>(
-        "mpc_path_planning/linear_vel", rclcpp::QoS(5));
+      "mpc_path_planning/linear_vel", rclcpp::QoS(5));
     angular_vel_pub_ = this->create_publisher<std_msgs::msg::Float32>(
-        "mpc_path_planning/angular_vel", rclcpp::QoS(5));
+      "mpc_path_planning/angular_vel", rclcpp::QoS(5));
     perfomance_pub_ = this->create_publisher<std_msgs::msg::Float32>(
-        "mpc_path_planning/control_period", rclcpp::QoS(5));
+      "mpc_path_planning/control_period", rclcpp::QoS(5));
     control_time_pub_ = this->create_publisher<std_msgs::msg::Float32>(
-        "mpc_path_planning/control_time", rclcpp::QoS(5));
+      "mpc_path_planning/control_time", rclcpp::QoS(5));
     cmd_vel_pub_->publish(stop());
     // subscriber
     goal_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
-        TARGET_TOPIC, rclcpp::QoS(10), [&](geometry_msgs::msg::PoseStamped::SharedPtr msg)
-        {
+      TARGET_TOPIC, rclcpp::QoS(10), [&](geometry_msgs::msg::PoseStamped::SharedPtr msg) {
         target_pose_ = make_pose(msg->pose);
-        cmd_vel_pub_->publish(stop()); });
+        cmd_vel_pub_->publish(stop());
+      });
     opti_path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
-        OPTIPATH_TOPIC, rclcpp::QoS(10).reliable(),
-        [&](const nav_msgs::msg::Path::SharedPtr msg)
-        { opti_path_ = *msg; });
+      OPTIPATH_TOPIC, rclcpp::QoS(10).reliable(),
+      [&](const nav_msgs::msg::Path::SharedPtr msg) { opti_path_ = *msg; });
     opti_twists_sub_ = this->create_subscription<extension_msgs::msg::TwistMultiArray>(
-        OPTITWISTS_TOPIC, rclcpp::QoS(10),
-        [&](extension_msgs::msg::TwistMultiArray::SharedPtr msg)
-        { opti_twists_ = *msg; });
+      OPTITWISTS_TOPIC, rclcpp::QoS(10),
+      [&](extension_msgs::msg::TwistMultiArray::SharedPtr msg) { opti_twists_ = *msg; });
     odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
-        ODOM_TOPIC, rclcpp::QoS(10),
-        [&](nav_msgs::msg::Odometry::SharedPtr msg)
-        { odom_vel_ = make_twist(*msg); });
+      ODOM_TOPIC, rclcpp::QoS(10),
+      [&](nav_msgs::msg::Odometry::SharedPtr msg) { odom_vel_ = make_twist(*msg); });
+    mpc_dt_sub_ = this->create_subscription<std_msgs::msg::Float32>(
+      "mpc_path_planning/dt", rclcpp::QoS(10).reliable(), [&](std_msgs::msg::Float32::SharedPtr msg) {
+        MPC_DT = msg->data;
+        if (approx_zero(MPC_DT)) {
+          RCLCPP_ERROR(this->get_logger(), "MPC_DT is 0.0");
+          return;
+        }
+        inv_MPC_DT = 1.0 / MPC_DT;
+      });
     // timer
-    control_timer_ = this->create_wall_timer(1s * CONTROL_PERIOD, [&]()
-                                             {
+    control_timer_ = this->create_wall_timer(1s * CONTROL_PERIOD, [&]() {
       if (!tf_buffer_.canTransform(
             ROBOT_FRAME, MAP_FRAME, rclcpp::Time(0),
             tf2::durationFromSec(1.0))) {  // 変換無いよ
@@ -98,6 +99,7 @@ public:
         RCLCPP_INFO_CHANGE(0, this->get_logger(), "get opti_path");
 #if defined(CONTROL_DEBUG_OUTPUT)
         std::cout << "----------------------------------------------------------" << std::endl;
+        std::cout << "mpc_dt:" << MPC_DT << std::endl;
 #endif
         // 制御出力
         Twistd cmd_vel = make_twist(stop());
@@ -138,7 +140,7 @@ public:
           cmd_vel.linear.y = v_xy.y;
           cmd_vel.angular.z = v.z;
         }
-        target_pose_.position.z=base_link_pose.position.z=0.0;
+        target_pose_.position.z = base_link_pose.position.z = 0.0;
         double target_dist = Vector3d::distance(target_pose_.position, base_link_pose.position);
         double target_diff_angle =
           std::abs(target_pose_.orientation.get_rpy().z - base_link_pose.orientation.get_rpy().z);
@@ -178,8 +180,7 @@ public:
           !cmd_vel.linear.has_inf() && !cmd_vel.angular.has_inf() && !cmd_vel.linear.has_nan() &&
           !cmd_vel.angular.has_nan())
           cmd_vel_pub_->publish(make_geometry_twist(cmd_vel));
-        else
-        {
+        else {
           RCLCPP_WARN(this->get_logger(), "error cmd_vel inf or nan !");
           std::cout << "cmd_vel:" << cmd_vel << std::endl;
           cmd_vel_pub_->publish(stop());
@@ -190,9 +191,11 @@ public:
       angular_vel_pub_->publish(make_float32(angular));
       perfomance_pub_->publish(make_float32(
         unit_cast<unit::time::s, unit::time::ms>((now_time - pre_control_time_).seconds())));
-      pre_control_time_ = this->get_clock()->now(); });
+      pre_control_time_ = this->get_clock()->now();
+    });
     init_data_logger(
-        {"u_vx", "u_vy", "u_w", "odom_vx", "odom_vy", "odom_w", "t_x", "t_y", "t_theta", "x", "y", "theta"});
+      {"u_vx", "u_vy", "u_w", "odom_vx", "odom_vy", "odom_w", "t_x", "t_y", "t_theta", "x", "y",
+       "theta"});
   }
 
 private:
@@ -218,6 +221,7 @@ private:
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr goal_sub_;
   rclcpp::Subscription<extension_msgs::msg::TwistMultiArray>::SharedPtr opti_twists_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
+  rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr mpc_dt_sub_;
   // publisher
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_pub_;
   rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr end_pub_;
