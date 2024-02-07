@@ -141,15 +141,15 @@ public:
         {"print_time", false},
         {"ipopt.warm_start_init_point", "yes"},
         // {"ipopt.hessian_approximation", "limited-memory"},//ヘッシアン近似（準ニュートン法）を行い反復一回あたりの計算は早くなる
-        {"ipopt.fixed_variable_treatment",
-         "make_constraint"},  // 固定変数をどのように処理するか  make_constraint:変数を固定する等価制約を追加
+        {"ipopt.fixed_variable_treatment","make_constraint"},  // 固定変数をどのように処理するか  make_constraint:変数を固定する等価制約を追加
         {"expand", true},
       };
     };
     mpc_config_.solver_option = solver_option();
     // mpc_config_.solver_option = MPCPathPlanner::default_solver_option();//default 設定
     OBSTACLE_DETECT_DIST = param<double>("mpc_path_planning.obstacle_detect.dist", 5.0);
-    OBSTACLE_SIZE = param<double>("mpc_path_planning.obstacle_detect.obstacle_size", 0.005);
+    MAX_OBSTACLE_SIZE = param<double>("mpc_path_planning.obstacle_detect.max_obstacle_size", 0.005);
+    MIN_OBSTACLE_SIZE = param<double>("mpc_path_planning.obstacle_detect.min_obstacle_size", 0.005);
     OBSTACLES_MAX_SIZE =
       static_cast<size_t>(param<int>("mpc_path_planning.obstacle_detect.list_size", 5));
     NEARBY_OBSTACLE_LIMIT =
@@ -189,6 +189,8 @@ public:
       OPTITWISTS_TOPIC, rclcpp::QoS(10).reliable());
     perfomance_pub_ = this->create_publisher<std_msgs::msg::Float32>(
       "mpc_path_planning/solve_time", rclcpp::QoS(5));
+    perfomance_ave_pub_ = this->create_publisher<std_msgs::msg::Float32>(
+      "mpc_path_planning/ave_solve_time", rclcpp::QoS(5));
     obstacles_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
       "mpc_path_planning/obstacles", rclcpp::QoS(5));
     // subscriber
@@ -265,6 +267,13 @@ public:
               opti_path_pub_->publish(o_ppath);
               opti_twists_pub_->publish(o_vpath);
               //debug
+              static long double sum=0.0;
+              static long count = 1;
+              sum += planner_->get_solve_time();
+              double ave_solve_time = sum/count;
+              count++;
+              perfomance_ave_pub_->publish(
+                make_float32(unit_cast<unit::time::s, unit::time::ms>(ave_solve_time)));
               perfomance_pub_->publish(
                 make_float32(unit_cast<unit::time::s, unit::time::ms>(planner_->get_solve_time())));
             }
@@ -284,7 +293,8 @@ private:
   double OBSTACLE_DETECT_DIST;
   double HALF_OBSTACLE_DETECT_DIST;
   size_t OBSTACLES_MAX_SIZE;
-  double OBSTACLE_SIZE;
+  double MAX_OBSTACLE_SIZE;
+  double MIN_OBSTACLE_SIZE;
   double NEARBY_OBSTACLE_LIMIT;
   // tf
   tf2_ros::Buffer tf_buffer_;
@@ -303,6 +313,7 @@ private:
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr opti_path_pub_;
   rclcpp::Publisher<extension_msgs::msg::TwistMultiArray>::SharedPtr opti_twists_pub_;
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr perfomance_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr perfomance_ave_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr obstacles_pub_;
   // twist
   Twistd now_vel_;
@@ -322,6 +333,7 @@ private:
   };
   std::priority_queue<obstacle_t> obstacles_;
   visualization_msgs::msg::MarkerArray obstacles_marker_;
+  double obstacle_size_;
 
   void clear_obstacles()
   {
@@ -365,6 +377,15 @@ private:
           }
         }
       }
+      double vel = now_vel_.linear.norm();
+      if (vel > mpc_config_.max_vel) vel = mpc_config_.max_vel;
+      obstacle_size_ = transform_range<double>(
+        vel, 0.0, mpc_config_.max_vel, MIN_OBSTACLE_SIZE, MAX_OBSTACLE_SIZE);
+#if defined(OBSTACLE_DETECT_DEBUG_OUTPUT)
+      std::cout << "---------------------------------------------------" << std::endl;
+      std::cout << "vel:" << vel << std::endl;
+      std::cout << "obstacle_size:" << obstacle_size_ << std::endl;
+#endif
       if (!target_pose_) {
         obstacle_t pre_obs;
         for (size_t i = 0; i < OBSTACLES_MAX_SIZE; i++) {
@@ -372,7 +393,7 @@ private:
           if (!obstacles_.empty()) {
             obstacle_t obstacle = obstacles_.top();
             if (i != 0) {
-              if ((pre_obs.pos - obstacle.pos).norm() >= (NEARBY_OBSTACLE_LIMIT * OBSTACLE_SIZE))
+              if ((pre_obs.pos - obstacle.pos).norm() >= (NEARBY_OBSTACLE_LIMIT * obstacle_size_))
                 obs_p = obstacle.pos;
               else {
                 i--;
@@ -386,7 +407,7 @@ private:
           }
           obstacles_marker_.markers.at(i) = make_point_maker(
             make_header(MAP_FRAME, rclcpp::Clock().now()), obs_p, i, make_color(1.0, 1.0, 0.0, 0.1),
-            OBSTACLE_SIZE);
+            obstacle_size_);
         }
         obstacles_pub_->publish(obstacles_marker_);
       }
@@ -402,7 +423,7 @@ private:
   casadi::MX mx_obstacles_;
   void init_parameter(casadi::Opti & opti)
   {
-    mx_obstacles_ = opti.parameter(2, OBSTACLES_MAX_SIZE);  // 障害物パラメータ
+    mx_obstacles_ = opti.parameter(3, OBSTACLES_MAX_SIZE);  // 障害物パラメータ
   }
 
   void add_cost_function(casadi::MX & cost, const casadi::MX & X, const casadi::MX & U) {}
@@ -414,7 +435,8 @@ private:
     for (size_t i = 1; i < (size_t)X.size2(); i++) {
       for (size_t j = 0; j < OBSTACLES_MAX_SIZE; j++)
         opti.subject_to(get_guard_circle_subject(
-          X(Sl(3, 5), i), mx_obstacles_(Sl(), j), MX::vertcat({OBSTACLE_SIZE, OBSTACLE_SIZE}),
+          X(Sl(3, 5), i), mx_obstacles_(Sl(0, 2), j),
+          MX::vertcat({mx_obstacles_(Sl(2), j), mx_obstacles_(Sl(2), j)}),
           "keep out"));  // 障害物制約
     }
   }
@@ -423,24 +445,24 @@ private:
   {
     using namespace casadi;
     using Sl = casadi::Slice;
-    casadi::DM dm_obstacles = DM::zeros(2, OBSTACLES_MAX_SIZE);
+    casadi::DM dm_obstacles = DM::zeros(3, OBSTACLES_MAX_SIZE);
     obstacle_t pre_obs;
-    casadi::DM dm_obs = DM::zeros(2);
+    casadi::DM dm_obs = DM::zeros(3);
     for (size_t i = 0; i < OBSTACLES_MAX_SIZE; i++) {
-      Eigen::Vector2d obs_p_mat =
-        make_eigen_vector2(Vector2d{EXECUSION_POINT_VALUE, EXECUSION_POINT_VALUE});
+      Eigen::Vector3d obs_p_mat = make_eigen_vector3(
+        Vector3d{EXECUSION_POINT_VALUE, EXECUSION_POINT_VALUE, MIN_OBSTACLE_SIZE});
       if (!obstacles_.empty()) {
         obstacle_t obstacle = obstacles_.top();
         if (i != 0) {
-          if ((pre_obs.pos - obstacle.pos).norm() >= (NEARBY_OBSTACLE_LIMIT * OBSTACLE_SIZE))
-            obs_p_mat << obstacle.pos.x, obstacle.pos.y;
+          if ((pre_obs.pos - obstacle.pos).norm() >= (NEARBY_OBSTACLE_LIMIT * obstacle_size_))
+            obs_p_mat << obstacle.pos.x, obstacle.pos.y, obstacle_size_;
           else {
             i--;
             obstacles_.pop();
             continue;
           }
         } else
-          obs_p_mat << obstacle.pos.x, obstacle.pos.y;
+          obs_p_mat << obstacle.pos.x, obstacle.pos.y, obstacle_size_;
         pre_obs = obstacle;
         obstacles_.pop();
       }
@@ -448,7 +470,7 @@ private:
       dm_obstacles(Sl(), i) = dm_obs;
       obstacles_marker_.markers.at(i) = make_point_maker(
         make_header(MAP_FRAME, rclcpp::Clock().now()), Vector2d{obs_p_mat(0), obs_p_mat(1)}, i,
-        make_color(1.0, 0.0, 0.0, 0.1), OBSTACLE_SIZE);
+        make_color(1.0, 0.0, 0.0, 0.1), obstacle_size_);
     }
     opti.set_value(mx_obstacles_, dm_obstacles);  // 障害物の位置追加
     obstacles_pub_->publish(obstacles_marker_);
