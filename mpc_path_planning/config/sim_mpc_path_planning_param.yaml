@@ -48,7 +48,8 @@ mpc_path_planning_node:
           compl_inf_tol: 0.0001 #相補性条件の「許容」しきい値 def 0.0001
       obstacle_detect:
         dist: 2.0 #[m]
-        obstacle_size: 0.43 #[m]
+        max_obstacle_size: 0.9 #[m]
+        min_obstacle_size: 0.45 #[m]
         list_size: 20
         nearby_obstacle_limit: 0.8 #[m]
 
