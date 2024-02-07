@@ -1,45 +1,14 @@
 #pragma once
-#include <execution>
-#include <iostream>
-#include <mutex>
-#include <optional>
-#include <string>
-#include <unordered_map>
-#include <utility>
-#include <vector>
-// Eigen
-#include <Eigen/Dense>
-#include <Eigen/Eigenvalues>
-// ROS
-#include <geometry_msgs/msg/pose_stamped.hpp>
-#include <nav_msgs/msg/path.hpp>
-#include <std_msgs/msg/empty.hpp>
+#include "mpc_path_planning/mpc_path_planning_component.hpp"
 // opencv
 #include <opencv2/opencv.hpp>
+
+#include "cv_bridge/cv_bridge.h"
 // OpenMP
 #include <omp.h>
 
-#include "common_lib/ros2_utility/extension_msgs_util.hpp"
-#include "common_lib/ros2_utility/msg_util.hpp"
-#include "common_lib/ros2_utility/ros_opencv_util.hpp"
-#include "common_lib/ros2_utility/tf_util.hpp"
-#include "cv_bridge/cv_bridge.h"
-#include "extension_node/extension_node.hpp"
-// other
-#include "common_lib/common_lib.hpp"
-
-#define PLANNER_DEBUG_OUTPUT
-// grid path planner
-#include "common_lib/planner/a_star.hpp"
-#include "common_lib/planner/dijkstra.hpp"
-#include "common_lib/planner/extension_a_star.hpp"
-#include "common_lib/planner/wave_propagation.hpp"
-
 #define _ENABLE_ATOMIC_ALIGNMENT_FIX
-//******************************************************************************
-// デバック関連設定
-// #define MAP_GEN_DEBUG_OUTPUT
-//******************************************************************************
+
 using namespace common_lib;
 using namespace std::chrono_literals;
 class GlobalPathPlanning : public ExtensionNode
@@ -65,6 +34,9 @@ public:
     ROBOT_FRAME = param<std::string>("global_path_planning.tf_frame.robot_frame", "base_link");
     // setup
     CONTROL_PERIOD = param<double>("global_path_planning.planning_period", 0.001);
+    THRESHOLD = param<int>("global_path_planning.dist_map.threshold", 20);
+    ALPHA = param<double>("global_path_planning.dist_map.alpha", -0.2);
+    BETA = param<double>("global_path_planning.dist_map.beta", -1.0);
     std::string PATH_PLANNER = param<std::string>("global_path_planning.path_planner", "a_star");
     // グリッドパスプランニング設定
     if (PATH_PLANNER.compare("wave_propagation") == 0)
@@ -104,7 +76,8 @@ public:
         target_pose_ = make_pose(msg->pose);
       });
     end_sub_ = this->create_subscription<std_msgs::msg::Empty>(
-      "mpc_path_planning/end", rclcpp::QoS(10).reliable(), [&](std_msgs::msg::Empty::SharedPtr msg) {
+      "mpc_path_planning/end", rclcpp::QoS(10).reliable(),
+      [&](std_msgs::msg::Empty::SharedPtr msg) {
         RCLCPP_INFO(this->get_logger(), "end!");
         target_pose_ = std::nullopt;
       });
@@ -133,7 +106,8 @@ public:
             global_path_pub_->publish(
               make_nav_path(make_header(MAP_FRAME, rclcpp::Clock().now()), grid_path));
             double calc_time = (rclcpp::Clock().now() - start_planning_timer_).seconds();
-            gpp_perfomance_pub_->publish(make_float32(unit_cast<unit::time::s,unit::time::ms>(calc_time)));
+            gpp_perfomance_pub_->publish(
+              make_float32(unit_cast<unit::time::s, unit::time::ms>(calc_time)));
           }
         }
       }
@@ -145,6 +119,9 @@ private:
   std::string MAP_FRAME;
   std::string ROBOT_FRAME;
   double CONTROL_PERIOD;
+  uint8_t THRESHOLD = 20;
+  double ALPHA = -0.2;
+  double BETA = -0.1;
   bool gen_distance_map_;
   // tf
   tf2_ros::Buffer tf_buffer_;
@@ -183,21 +160,33 @@ private:
     dist_map_msg_.data.resize(dist_map_msg_.info.width * dist_map_msg_.info.height);
     Pose3d origin = make_pose(dist_map_msg_.info.origin);
     cv::Mat img = make_cv_mat(*map_msg_);
-    cv::Mat dist_img, convert_dist_img;
+    cv::Mat filtering_img, convert_img;
     // 二値化
     // cv::threshold(img, img, 250, 255, cv::THRESH_BINARY);// unknown 255
     cv::threshold(img, img, 50, 255, cv::THRESH_BINARY);  // unknown 0
     // 距離場計算
-    cv::distanceTransform(img, dist_img, CV_DIST_L2, 5);
-    dist_img.convertTo(convert_dist_img, CV_32FC1, 1.0);
+    // cv::distanceTransform(img, filtering_im, CV_DIST_L1, 3);
+    cv::distanceTransform(img, filtering_img, CV_DIST_L2, 5);  //ユークリッド距離
+    cv::threshold(filtering_img, filtering_img, THRESHOLD, 255, cv::THRESH_TRUNC);
+    filtering_img.convertTo(convert_img, CV_32FC1, 1.0);
     double min, max;
     cv::Point min_p, max_p;
-    cv::minMaxLoc(convert_dist_img, &min, &max, &min_p, &max_p);
+    cv::minMaxLoc(convert_img, &min, &max, &min_p, &max_p);
+#if defined(MAP_GEN_DEBUG_OUTPUT)
+    std::cout << "min:" << min << " max:" << max << std::endl;
+    std::cout << "alpha:" << ALPHA << " beta:" << BETA << std::endl;
+#endif
 #pragma omp parallel for
     for (size_t y = 0; y < dist_map_msg_.info.height; y++) {
       for (size_t x = 0; x < dist_map_msg_.info.width; x++) {
-        float pixel = transform_range<float>(
-          max - convert_dist_img.at<float>(y, x), min, max, 0.0, (float)GridMap::WALL_VALUE);
+        // float pixel = transform_range<float>(
+        //   max - convert_img.at<float>(y, x), min, max, 0.0, (float)GridMap::WALL_VALUE);
+        float val = transform_range<float>(max - convert_img.at<float>(y, x), min, max, 0.0f, 1.0f);
+        // float pixel = static_cast<float>(GridMap::WALL_VALUE)*(std::pow(10.0f,val-0.5f)-2.0f);
+        // float pixel = static_cast<float>(GridMap::WALL_VALUE)*(std::exp(val-0.2f)-2.0f);
+        float pixel = static_cast<float>(GridMap::WALL_VALUE) *
+                      (std::exp(val + static_cast<float>(ALPHA)) + static_cast<float>(BETA));
+        // float pixel = static_cast<float>(GridMap::WALL_VALUE)*val;
         if (pixel >= (float)GridMap::WALL_VALUE) pixel = (float)GridMap::WALL_VALUE;
         if (pixel < 0.0) pixel = 0.0;
         dist_map_msg_.data[dist_map_msg_.info.width * (dist_map_msg_.info.height - y - 1) + x] =

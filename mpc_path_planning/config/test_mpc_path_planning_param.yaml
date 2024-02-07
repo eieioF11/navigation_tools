@@ -63,6 +63,11 @@ global_path_planning_node:
         map_frame: "map"
         robot_frame: "base_link"
       planning_period: 0.1 #[s]
+      dist_map:
+        threshold: 20 #(0~255)距離場の値がthreshold[pixel]より小さい値のみ使用する、大きい値は255
+        # map[x,y] = GridMap::WALL_VALUE*exp(img[x,y]+alpha)+beta ※img[x,y]:0~1の値で1が障害物
+        alpha: -0.2
+        beta: -1.0
       path_planner: "extension_a_star" #dijkstra,dijkstra_dist_map,a_star,extension_a_star,wave_propagation,wave_propagation_dist_map
 
 control_node:

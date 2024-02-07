@@ -1,13 +1,4 @@
 #pragma once
-#include <execution>
-#include <iostream>
-#include <mutex>
-#include <optional>
-#include <string>
-#include <unordered_map>
-#include <utility>
-#include <vector>
-
 #include "mpc_path_planning/mpc_path_planning_component.hpp"
 
 using namespace common_lib;

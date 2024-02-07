@@ -42,7 +42,7 @@ mpc_path_planning_node:
         terminal_range: 0.45
         ipopt:  #ソルバー設定
           sb: "yes"                # コンソールにヘッダを出力しない
-          linear_solver: "ma27"    # mumpsは遅い ma27はHSLライブラリ必要 (mumps:40msくらい,ma27:10msくらい)
+          linear_solver: "ma97" # mumpsは遅い ma27,ma57,ma86,ma97はHSLライブラリ必要 (mumps:40msくらい,ma27:10msくらい)
           max_iter: 1000            #最大反復回数 def 500
           acceptable_tol: 0.000001  #収束許容値 def 0.000001
           compl_inf_tol:  0.0001   #相補性条件の「許容」しきい値 def 0.0001
@@ -63,6 +63,11 @@ global_path_planning_node:
         map_frame:   "map"
         robot_frame: "base_link"
       planning_period: 0.1 #[s]
+      dist_map:
+        threshold: 20 #(0~255)距離場の値がthreshold[pixel]より小さい値のみ使用する、大きい値は255
+        # map[x,y] = GridMap::WALL_VALUE*exp(img[x,y]+alpha)+beta ※img[x,y]:0~1の値で1が障害物
+        alpha: -0.2
+        beta: -1.0
       path_planner: "extension_a_star" #dijkstra,dijkstra_dist_map,a_star,extension_a_star,wave_propagation,wave_propagation_dist_map
 
 control_node:

@@ -5,14 +5,16 @@ lrf_to_grid_node:
         map: "/lrf/map"
         laser: "/scan"
         cloud: "/glim_ros/points"
+        # cloud: "/demo_cam/mycamera/points_demo"
+        # cloud: "/livox/lidar"
       tf_frame:
         map_frame: "map"
         robot_frame: "base_link"
       add_cell: false
       filter:
-        voxelgrid_size: 0.05
-        z_max: 1.5
-        z_min: 0.1
+        voxelgrid_size: 0.001
+        z_max: 1.0
+        z_min: 0.0
       grid_map_info:
         resolution: 0.1 #[m] def 0.05
         # origin: [-5.0,-5.0,0.0]
