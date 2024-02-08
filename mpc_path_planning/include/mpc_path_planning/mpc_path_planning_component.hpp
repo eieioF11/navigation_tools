@@ -141,7 +141,8 @@ public:
         {"print_time", false},
         {"ipopt.warm_start_init_point", "yes"},
         // {"ipopt.hessian_approximation", "limited-memory"},//ヘッシアン近似（準ニュートン法）を行い反復一回あたりの計算は早くなる
-        {"ipopt.fixed_variable_treatment","make_constraint"},  // 固定変数をどのように処理するか  make_constraint:変数を固定する等価制約を追加
+        {"ipopt.fixed_variable_treatment",
+         "make_constraint"},  // 固定変数をどのように処理するか  make_constraint:変数を固定する等価制約を追加
         {"expand", true},
       };
     };
@@ -270,10 +271,10 @@ public:
               opti_path_pub_->publish(o_ppath);
               opti_twists_pub_->publish(o_vpath);
               //debug
-              static long double sum=0.0;
+              static long double sum = 0.0;
               static long count = 1;
               sum += planner_->get_solve_time();
-              double ave_solve_time = sum/count;
+              double ave_solve_time = sum / count;
               count++;
               perfomance_ave_pub_->publish(
                 make_float32(unit_cast<unit::time::s, unit::time::ms>(ave_solve_time)));
@@ -432,16 +433,25 @@ private:
 
   void add_cost_function(casadi::MX & cost, const casadi::MX & X, const casadi::MX & U) {}
 
+
   void add_constraints(casadi::Opti & opti, const casadi::MX & X, const casadi::MX & U)
   {
     using namespace casadi;
     using Sl = casadi::Slice;
     for (size_t i = 1; i < (size_t)X.size2(); i++) {
-      for (size_t j = 0; j < OBSTACLES_MAX_SIZE; j++)
+      for (size_t j = 0; j < OBSTACLES_MAX_SIZE; j++) {
+        // casadi::MX mx_obstacles_size_ = opti.parameter(1);
+        // auto vel = sqrt(sumsqr(X(Sl(0, 2), i)));
+        // mx_obstacles_size_=(vel) * (MAX_OBSTACLE_SIZE - MIN_OBSTACLE_SIZE) / (mpc_config_.max_vel) + MIN_OBSTACLE_SIZE;
+        // opti.subject_to(get_guard_circle_subject(
+        //   X(Sl(3, 5), i), mx_obstacles_(Sl(0, 2), j),
+        //   MX::vertcat({mx_obstacles_size_, mx_obstacles_size_}),
+        //   "keep out"));  // 障害物制約
         opti.subject_to(get_guard_circle_subject(
           X(Sl(3, 5), i), mx_obstacles_(Sl(0, 2), j),
           MX::vertcat({mx_obstacles_(Sl(2), j), mx_obstacles_(Sl(2), j)}),
           "keep out"));  // 障害物制約
+      }
     }
   }
 
