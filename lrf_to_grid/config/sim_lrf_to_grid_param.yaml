@@ -3,6 +3,7 @@ lrf_to_grid_node:
     lrf_to_grid:
       topic_name:
         map: "/lrf/map"
+        storage_map: "/lrf/storage_map"
         laser: "/scan"
         cloud: "/glim_ros/points"
         # cloud: "/demo_cam/mycamera/points_demo"
@@ -10,13 +11,16 @@ lrf_to_grid_node:
       tf_frame:
         map_frame: "map"
         robot_frame: "base_link"
-      add_cell: false
+      storage_map:
+        publish_rate: 0.5 #[s]
+        que_size: 5
+      add_cell: true
       filter:
-        voxelgrid_size: 0.001
-        z_max: 1.0
-        z_min: 0.0
+        voxelgrid_size: 0.01
+        z_max: 0.5
+        z_min: 0.1
       grid_map_info:
-        resolution: 0.1 #[m] def 0.05
+        resolution: 0.2 #[m] def 0.05
         # origin: [-5.0,-5.0,0.0]
         width: 25.0 #[m]
         height: 25.0 #[m]
