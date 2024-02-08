@@ -38,6 +38,7 @@ public:
     ALPHA = param<double>("global_path_planning.dist_map.alpha", -0.2);
     BETA = param<double>("global_path_planning.dist_map.beta", -1.0);
     std::string PATH_PLANNER = param<std::string>("global_path_planning.path_planner", "a_star");
+    double w = param<double>("global_path_planning.extension_a_star.weight", 0.04);
     // グリッドパスプランニング設定
     if (PATH_PLANNER.compare("wave_propagation") == 0)
       planner_ = std::make_shared<WavePropagation>();
@@ -46,7 +47,7 @@ public:
     else if (PATH_PLANNER.compare("a_star") == 0)
       planner_ = std::make_shared<AStar>();
     else if (PATH_PLANNER.compare("extension_a_star") == 0)
-      planner_ = std::make_shared<ExtensionAStar>();
+      planner_ = std::make_shared<ExtensionAStar>(w);
     else if (PATH_PLANNER.compare("dijkstra") == 0)
       planner_ = std::make_shared<Dijkstra>();
     else if (PATH_PLANNER.compare("dijkstra_dist_map") == 0)
@@ -56,6 +57,8 @@ public:
       return;
     }
     RCLCPP_INFO(this->get_logger(), "path planner: %s", PATH_PLANNER.c_str());
+    planner_->set_timer([&]() { return rclcpp::Clock().now().seconds(); });
+    planner_->set_time_out(param<double>("global_path_planning.time_out", 2.0));
     // publisher
     global_path_pub_ =
       this->create_publisher<nav_msgs::msg::Path>(GLOBALPATH_TOPIC, rclcpp::QoS(10).reliable());
