@@ -15,7 +15,9 @@
 // ROS
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
+#include <nav2_msgs/action/navigate_to_pose.hpp>
 #include <nav_msgs/msg/path.hpp>
+#include <rclcpp_action/rclcpp_action.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
@@ -32,14 +34,9 @@
 // other
 #include "common_lib/common_lib.hpp"
 
+// mpc
 #define PLANNER_DEBUG_OUTPUT
 #define USE_OMP
-// grid path planner
-#include "common_lib/planner/a_star.hpp"
-#include "common_lib/planner/dijkstra.hpp"
-#include "common_lib/planner/extension_a_star.hpp"
-#include "common_lib/planner/wave_propagation.hpp"
-// mpc
 #include "common_lib/planner/mpc_path_planner.hpp"
 
 #define _ENABLE_ATOMIC_ALIGNMENT_FIX
@@ -50,8 +47,8 @@
 #define NON_HOLONOMIC
 // デバック関連設定
 // #define PLANNING_DEBUG_OUTPUT
-#define MAP_GEN_DEBUG_OUTPUT
-#define CONTROL_DEBUG_OUTPUT
+// #define MAP_GEN_DEBUG_OUTPUT
+// #define CONTROL_DEBUG_OUTPUT
 // #define USE_IMU_DEBUG
 // #define OBSTACLE_DETECT_DEBUG_OUTPUT
 //******************************************************************************
@@ -60,6 +57,10 @@ using namespace std::chrono_literals;
 class MPCPathPlanning : public ExtensionNode
 {
 public:
+  using NavigateToPose = nav2_msgs::action::NavigateToPose;
+  using ClientGoalHandleNavigateToPose = rclcpp_action::ClientGoalHandle<NavigateToPose>;
+  using ServerGoalHandleNavigateToPose = rclcpp_action::ServerGoalHandle<NavigateToPose>;
+
   MPCPathPlanning(const rclcpp::NodeOptions & options) : MPCPathPlanning("", options) {}
   MPCPathPlanning(
     const std::string & name_space = "",
@@ -87,6 +88,7 @@ public:
     ROBOT_FRAME = param<std::string>("mpc_path_planning.tf_frame.robot_frame", "base_link");
     // setup
     PLANNING_PERIOD = param<double>("mpc_path_planning.planning_period", 0.001);
+    GLOBAL_PLANNING_PERIOD = param<double>("global_path_planning.global_planning_period", 0.001);
     // mpc
     mpc_config_.dt = param<double>("mpc_path_planning.mpc.dt", 0.06);
     double HORIZON_TIME = param<double>("mpc_path_planning.mpc.horizon_time", 7.0);
@@ -159,6 +161,7 @@ public:
     RCLCPP_INFO(this->get_logger(), "Initialization !");
     HALF_OBSTACLE_DETECT_DIST = OBSTACLE_DETECT_DIST / 2.0;
     target_pose_ = std::nullopt;
+    end_ = false;
     vel_error_.linear = {0.0, 0.0, 0.0};
     vel_error_.angular = {0.0, 0.0, 0.0};
     obstacles_marker_.markers.resize(OBSTACLES_MAX_SIZE);
@@ -199,24 +202,28 @@ public:
     // subscriber
     goal_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
       TARGET_TOPIC, rclcpp::QoS(10), [&](geometry_msgs::msg::PoseStamped::SharedPtr msg) {
-        target_pose_ = make_pose(msg->pose);
-        global_path_ = std::nullopt;
+        auto goal_msg = NavigateToPose::Goal();
+        goal_msg.pose = *msg;
+        auto send_goal_options = rclcpp_action::Client<NavigateToPose>::SendGoalOptions();
+        send_goal_options.feedback_callback =
+          [&](
+            ClientGoalHandleNavigateToPose::SharedPtr,
+            const std::shared_ptr<const NavigateToPose::Feedback> feedback) {};
+        send_goal_options.result_callback =
+          [&](const ClientGoalHandleNavigateToPose::WrappedResult & result) {};
+        planning_action_client_->async_send_goal(goal_msg, send_goal_options);
       });
     global_path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
       GLOBALPATH_TOPIC, rclcpp::QoS(10).reliable(), [&](const nav_msgs::msg::Path::SharedPtr msg) {
-        RCLCPP_INFO(this->get_logger(), "get global_path!");
+        // RCLCPP_INFO(this->get_logger(), "get global_path!");
         global_path_ = make_path(*msg);
       });
     odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
       ODOM_TOPIC, rclcpp::QoS(10),
       [&](nav_msgs::msg::Odometry::SharedPtr msg) { now_vel_ = make_twist(*msg); });
-    end_sub_ = this->create_subscription<std_msgs::msg::Empty>(
-      "mpc_path_planning/end", rclcpp::QoS(10).reliable(),
-      [&](std_msgs::msg::Empty::SharedPtr msg) {
-        RCLCPP_INFO(this->get_logger(), "end!");
-        target_pose_ = std::nullopt;
-        global_path_ = std::nullopt;
-      });
+    // end_sub_ = this->create_subscription<std_msgs::msg::Empty>(
+    //   "mpc_path_planning/end", rclcpp::QoS(10).reliable(),
+    //   [&](std_msgs::msg::Empty::SharedPtr msg) { end_proc(); });
     map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
       MAP_TOPIC, rclcpp::QoS(10).reliable(),
       [&](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) { map_ = make_gridmap(*msg); });
@@ -226,73 +233,207 @@ public:
           now_vel_.linear.x, now_vel_.linear.y, now_vel_.angular.z, msg->linear.x, msg->linear.y,
           msg->angular.z);
       });
+    // action server
+    using namespace std::placeholders;
+    action_server_ = rclcpp_action::create_server<NavigateToPose>(
+      this, "navigate_to_pose", std::bind(&MPCPathPlanning::handle_goal, this, _1, _2),
+      std::bind(&MPCPathPlanning::handle_cancel, this, _1),
+      std::bind(&MPCPathPlanning::handle_accepted, this, _1));
+    // action client
+    control_action_client_ =
+      rclcpp_action::create_client<NavigateToPose>(this, "mpc_path_planning/control");
+    global_planning_action_client_ =
+      rclcpp_action::create_client<NavigateToPose>(this, "mpc_path_planning/global_planning");
+    planning_action_client_ =
+      rclcpp_action::create_client<NavigateToPose>(this, "navigate_to_pose");
     // timer
-    path_planning_timer_ = this->create_wall_timer(1s * PLANNING_PERIOD, [&]() {
-      if (!tf_buffer_.canTransform(
-            ROBOT_FRAME, MAP_FRAME, rclcpp::Time(0),
-            tf2::durationFromSec(1.0))) {  // 変換無いよ
-        RCLCPP_WARN(
-          this->get_logger(), "%s %s can not Transform", MAP_FRAME.c_str(), ROBOT_FRAME.c_str());
+    // path_planning_timer_ = this->create_wall_timer(1s * PLANNING_PERIOD, [&]() {});
+    init_data_logger({"odom_vx", "odom_vy", "odom_w", "u_vx", "u_vy", "u_w"});
+    // action serverの起動待機
+    while (!control_action_client_->wait_for_action_server()&&!global_planning_action_client_->wait_for_action_server()) {
+      RCLCPP_INFO(get_logger(), "Waiting for action server...");
+    }
+    // }
+  };
+
+  // Action Server
+  rclcpp_action::GoalResponse handle_goal(
+    const rclcpp_action::GoalUUID & uuid, std::shared_ptr<const NavigateToPose::Goal> goal)
+  {
+    RCLCPP_INFO(this->get_logger(), "MPCPathPlanner Received goal request");
+    target_pose_ = make_pose(goal->pose.pose);
+    std::cout << "goal:" << target_pose_.value() << std::endl;
+    controler_send_target(goal->pose);
+    global_planner_send_target(target_pose_.value());
+    end_ = false;
+    (void)uuid;
+    return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
+  }
+
+  rclcpp_action::CancelResponse handle_cancel(
+    const std::shared_ptr<ServerGoalHandleNavigateToPose> goal_handle)
+  {
+    RCLCPP_INFO(this->get_logger(), "MPCPathPlanner Received request to cancel goal");
+    (void)goal_handle;
+    return rclcpp_action::CancelResponse::ACCEPT;
+  }
+
+  void handle_accepted(const std::shared_ptr<ServerGoalHandleNavigateToPose> goal_handle)
+  {
+    using namespace std::placeholders;
+    std::thread{std::bind(&MPCPathPlanning::execute, this, _1), goal_handle}.detach();
+  }
+
+  void execute(const std::shared_ptr<ServerGoalHandleNavigateToPose> goal_handle)
+  {
+    std::chrono::nanoseconds planning_period(
+      static_cast<int>(unit_cast<unit::time::s, unit::time::ns>(PLANNING_PERIOD)));
+    rclcpp::Rate loop_rate(planning_period);
+    const auto goal = goal_handle->get_goal();
+    auto feedback = std::make_shared<NavigateToPose::Feedback>();
+    auto result = std::make_shared<NavigateToPose::Result>();
+    RCLCPP_INFO(this->get_logger(), "start mpc_path_planning");
+    while (rclcpp::ok()) {
+      if (end_) {
+        target_pose_ = std::nullopt;
+        global_path_ = std::nullopt;
+        goal_handle->succeed(result);
+        RCLCPP_INFO(this->get_logger(), "Controler Goal succeeded");
         return;
       }
-      auto map_to_base_link = lookup_transform(tf_buffer_, ROBOT_FRAME, MAP_FRAME);
-      if (map_to_base_link) {
-        Pose3d base_link_pose = make_pose(map_to_base_link.value().transform);
-        obstacles_detect(base_link_pose);
-        RCLCPP_INFO_CHANGE(0, this->get_logger(), "get base_link pose");
-        // 経路計算
-        if (global_path_) {
+      if (target_pose_)
+        global_planner_send_target(target_pose_.value());
+      path_planning(feedback);
+      goal_handle->publish_feedback(feedback);
+      loop_rate.sleep();
+    }
+  }
+
+  void path_planning(const NavigateToPose::Feedback::SharedPtr feedback)
+  {
+    if (!tf_buffer_.canTransform(
+          ROBOT_FRAME, MAP_FRAME, rclcpp::Time(0),
+          tf2::durationFromSec(1.0))) {  // 変換無いよ
+      RCLCPP_WARN(
+        this->get_logger(), "%s %s can not Transform", MAP_FRAME.c_str(), ROBOT_FRAME.c_str());
+      return;
+    }
+    auto map_to_base_link = lookup_transform(tf_buffer_, ROBOT_FRAME, MAP_FRAME);
+    if (map_to_base_link) {
+      Pose3d base_link_pose = make_pose(map_to_base_link.value().transform);
+      obstacles_detect(base_link_pose);
+      RCLCPP_INFO_CHANGE(0, this->get_logger(), "get base_link pose");
+      // 経路計算
+      if (global_path_) {
 #if defined(NON_HOLONOMIC)
-          now_vel_.linear.y = 0.0;
+        now_vel_.linear.y = 0.0;
 #endif
-          planner_->set_grid_path(global_path_.value());
-          if (target_pose_) {
+        planner_->set_grid_path(global_path_.value());
+        if (target_pose_) {
 #if defined(PLANNING_DEBUG_OUTPUT)
-            std::cout << "----------------------------------------------------------" << std::endl;
-            std::cout << "now_vel:" << now_vel_ << std::endl;
-            std::cout << "vel_error_:" << vel_error_ << std::endl;
-            std::cout << "end:" << target_pose_.value() << std::endl;
-            std::cout << "start:" << base_link_pose << std::endl;
-            std::cout << "end:" << target_pose_.value() << std::endl;
+          std::cout << "----------------------------------------------------------" << std::endl;
+          std::cout << "now_vel:" << now_vel_ << std::endl;
+          std::cout << "vel_error_:" << vel_error_ << std::endl;
+          std::cout << "end:" << target_pose_.value() << std::endl;
+          std::cout << "start:" << base_link_pose << std::endl;
+          std::cout << "end:" << target_pose_.value() << std::endl;
 #endif
-            PathPointd start = make_pathpoint<double>(base_link_pose, now_vel_);
-            PathPointd end = make_pathpoint<double>(target_pose_.value());
-            // path planning
-            Pathd opti_path = planner_->path_planning(start, end);
-            Pathd init_path = planner_->get_init_path();
-            // publish grid path
-            init_path_pub_->publish(
-              make_nav_path(make_header(MAP_FRAME, rclcpp::Clock().now()), init_path));
-            if (planner_->optimization()) {  //最適化成功
-              // publish opti path
-              auto [o_ppath, o_vpath, o_apath] =
-                make_msg_paths(make_header(MAP_FRAME, rclcpp::Clock().now()), opti_path);
-              mpc_dt_pub_->publish(make_float32(mpc_config_.dt));
-              opti_path_pub_->publish(o_ppath);
-              opti_twists_pub_->publish(o_vpath);
-              //debug
-              static long double sum = 0.0;
-              static long count = 1;
-              sum += planner_->get_solve_time();
-              double ave_solve_time = sum / count;
-              count++;
-              perfomance_ave_pub_->publish(
-                make_float32(unit_cast<unit::time::s, unit::time::ms>(ave_solve_time)));
-              perfomance_pub_->publish(
-                make_float32(unit_cast<unit::time::s, unit::time::ms>(planner_->get_solve_time())));
-            }
+          PathPointd start = make_pathpoint<double>(base_link_pose, now_vel_);
+          PathPointd end = make_pathpoint<double>(target_pose_.value());
+          // path planning
+          Pathd opti_path = planner_->path_planning(start, end);
+          Pathd init_path = planner_->get_init_path();
+          // publish grid path
+          init_path_pub_->publish(
+            make_nav_path(make_header(MAP_FRAME, rclcpp::Clock().now()), init_path));
+          if (planner_->optimization()) {  //最適化成功
+            // publish opti path
+            auto [o_ppath, o_vpath, o_apath] =
+              make_msg_paths(make_header(MAP_FRAME, rclcpp::Clock().now()), opti_path);
+            mpc_dt_pub_->publish(make_float32(mpc_config_.dt));
+            opti_path_pub_->publish(o_ppath);
+            opti_twists_pub_->publish(o_vpath);
+            //debug
+            static long double sum = 0.0;
+            static long count = 1;
+            sum += planner_->get_solve_time();
+            double ave_solve_time = sum / count;
+            count++;
+            perfomance_ave_pub_->publish(
+              make_float32(unit_cast<unit::time::s, unit::time::ms>(ave_solve_time)));
+            perfomance_pub_->publish(
+              make_float32(unit_cast<unit::time::s, unit::time::ms>(planner_->get_solve_time())));
           }
         }
       }
-    });
-    init_data_logger({"odom_vx", "odom_vy", "odom_w", "u_vx", "u_vy", "u_w"});
+    }
+  }
+
+  // Action Client
+  void controler_send_target(geometry_msgs::msg::PoseStamped target_pose)
+  {
+    using namespace std::placeholders;
+    global_path_ = std::nullopt;
+    auto goal_msg = NavigateToPose::Goal();
+    goal_msg.pose = target_pose;
+    //進捗状況を表示するFeedbackコールバックを設定
+    auto send_goal_options = rclcpp_action::Client<NavigateToPose>::SendGoalOptions();
+    send_goal_options.feedback_callback =
+      [&](
+        ClientGoalHandleNavigateToPose::SharedPtr,
+        const std::shared_ptr<const NavigateToPose::Feedback> feedback) {
+        RCLCPP_DEBUG(get_logger(), "Distance remaininf = %f", feedback->distance_remaining);
+      };
+    send_goal_options.result_callback =
+      [&](const ClientGoalHandleNavigateToPose::WrappedResult & result) {
+        switch (result.code) {
+          case rclcpp_action::ResultCode::SUCCEEDED:
+            RCLCPP_INFO(get_logger(), "Success!!!");
+            end_ = true;
+            break;
+          case rclcpp_action::ResultCode::ABORTED:
+            RCLCPP_ERROR(get_logger(), "Goal was aborted");
+            end_ = true;
+            return;
+          case rclcpp_action::ResultCode::CANCELED:
+            RCLCPP_ERROR(get_logger(), "Goal was canceled");
+            end_ = true;
+            return;
+          default:
+            RCLCPP_ERROR(get_logger(), "Unknown result code");
+            return;
+        }
+      };
+    //controlerに送信
+    control_action_client_->async_send_goal(goal_msg, send_goal_options);
+
+  }
+  void global_planner_send_target(Pose3d target_pose)
+  {
+    using namespace std::placeholders;
+    global_path_ = std::nullopt;
+    auto goal_msg = NavigateToPose::Goal();
+    goal_msg.pose.header = make_header(MAP_FRAME, rclcpp::Clock().now());
+    goal_msg.pose.pose = make_geometry_pose(target_pose);
+    //進捗状況を表示するFeedbackコールバックを設定
+    auto send_goal_options = rclcpp_action::Client<NavigateToPose>::SendGoalOptions();
+    //global_plannerに送信
+    send_goal_options.feedback_callback =
+      [&](
+        ClientGoalHandleNavigateToPose::SharedPtr,
+        const std::shared_ptr<const NavigateToPose::Feedback> feedback) {};
+    send_goal_options.result_callback =
+      [&](const ClientGoalHandleNavigateToPose::WrappedResult & result) {};
+    global_planning_action_client_->async_send_goal(goal_msg, send_goal_options);
   }
 
 private:
+  bool end_;
   // param
   std::string MAP_FRAME;
   std::string ROBOT_FRAME;
   double PLANNING_PERIOD;
+  double GLOBAL_PLANNING_PERIOD;
   mpc_config_t mpc_config_;
   double OBSTACLE_DETECT_DIST;
   double HALF_OBSTACLE_DETECT_DIST;
@@ -305,6 +446,11 @@ private:
   tf2_ros::TransformListener listener_;
   // timer
   rclcpp::TimerBase::SharedPtr path_planning_timer_;
+  // action
+  rclcpp_action::Server<NavigateToPose>::SharedPtr action_server_;
+  rclcpp_action::Client<NavigateToPose>::SharedPtr control_action_client_;
+  rclcpp_action::Client<NavigateToPose>::SharedPtr global_planning_action_client_;
+  rclcpp_action::Client<NavigateToPose>::SharedPtr planning_action_client_;
   // subscriber
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr goal_sub_;
@@ -338,12 +484,49 @@ private:
   };
   std::priority_queue<obstacle_t> obstacles_;
   visualization_msgs::msg::MarkerArray obstacles_marker_;
-  double obstacle_size_;
+  // double obstacle_size_;
+  Vector3d obstacle_size_;
 
   void clear_obstacles()
   {
     std::priority_queue<obstacle_t> empty;
     obstacles_ = empty;  // 要素の削除
+  }
+
+  void set_obstacle()
+  {
+    using namespace casadi;
+    using Sl = casadi::Slice;
+    casadi::DM dm_obstacles = DM::zeros(2, OBSTACLES_MAX_SIZE);
+    casadi::DM dm_obstacles_size = set_value(obstacle_size_.to_vector2());
+    obstacle_t pre_obs;
+    casadi::DM dm_obs = DM::zeros(2);
+    for (size_t i = 0; i < OBSTACLES_MAX_SIZE; i++) {
+      Vector2d obs_p = {EXECUSION_POINT_VALUE, EXECUSION_POINT_VALUE};
+      if (!obstacles_.empty()) {
+        obstacle_t obstacle = obstacles_.top();
+        if (i != 0) {
+          Vector2d diff = pre_obs.pos - obstacle.pos;
+          if (
+            std::abs(diff.x) >= (NEARBY_OBSTACLE_LIMIT * obstacle_size_.x) ||
+            std::abs(diff.y) >= (NEARBY_OBSTACLE_LIMIT * obstacle_size_.y))
+            obs_p = obstacle.pos;
+          else {
+            i--;
+            obstacles_.pop();
+            continue;
+          }
+        } else
+          obs_p = obstacle.pos;
+        pre_obs = obstacle;
+        obstacles_.pop();
+      }
+      set_value(dm_obs, obs_p);
+      dm_obstacles(Sl(), i) = dm_obs;
+      obstacles_marker_.markers.at(i) = make_circle_maker(
+        make_header(MAP_FRAME, rclcpp::Clock().now()), obs_p, i, make_color(1.0, 0.0, 0.0, 0.1),
+        obstacle_size_);
+    }
   }
 
   void obstacles_detect(Pose3d robot_pose)
@@ -352,6 +535,7 @@ private:
       auto start = rclcpp::Clock().now();
       Vector2d robot = {robot_pose.position.x, robot_pose.position.y};
       clear_obstacles();
+      // 探索範囲計算
       Vector2d start_cell = map_.value().get_grid_pos(
         robot.x - HALF_OBSTACLE_DETECT_DIST, robot.y - HALF_OBSTACLE_DETECT_DIST);
       Vector2d end_cell = map_.value().get_grid_pos(
@@ -371,6 +555,7 @@ private:
       std::cout << "start cell:" << start_x << "," << start_y << std::endl;
       std::cout << "end cell:" << end_x << "," << end_y << std::endl;
 #endif
+      // 障害物探索
 #pragma omp parallel for
       for (size_t y = start_y; y < end_y; y++) {
         for (size_t x = start_x; x < end_x; x++) {
@@ -382,15 +567,23 @@ private:
           }
         }
       }
+      // 障害物サイズ計算
       double vel = now_vel_.linear.norm();
       if (vel > mpc_config_.max_vel) vel = mpc_config_.max_vel;
-      obstacle_size_ = transform_range<double>(
+      double obstacle_size = transform_range<double>(
         vel, 0.0, mpc_config_.max_vel, MIN_OBSTACLE_SIZE, MAX_OBSTACLE_SIZE);
+      double theta = robot_pose.orientation.get_rpy().z;
+      double x_size =
+        MIN_OBSTACLE_SIZE + (obstacle_size - MIN_OBSTACLE_SIZE) * std::abs(cos(theta));
+      double y_size =
+        MIN_OBSTACLE_SIZE + (obstacle_size - MIN_OBSTACLE_SIZE) * std::abs(sin(theta));
+      obstacle_size_ = {x_size, y_size, obstacle_size};
 #if defined(OBSTACLE_DETECT_DEBUG_OUTPUT)
       std::cout << "---------------------------------------------------" << std::endl;
       std::cout << "vel:" << vel << std::endl;
       std::cout << "obstacle_size:" << obstacle_size_ << std::endl;
 #endif
+      // デバック 障害物表示
       if (!target_pose_) {
         obstacle_t pre_obs;
         for (size_t i = 0; i < OBSTACLES_MAX_SIZE; i++) {
@@ -398,7 +591,11 @@ private:
           if (!obstacles_.empty()) {
             obstacle_t obstacle = obstacles_.top();
             if (i != 0) {
-              if ((pre_obs.pos - obstacle.pos).norm() >= (NEARBY_OBSTACLE_LIMIT * obstacle_size_))
+              // if ((pre_obs.pos - obstacle.pos).norm() >= (NEARBY_OBSTACLE_LIMIT * obstacle_size_))
+              Vector2d diff = pre_obs.pos - obstacle.pos;
+              if (
+                std::abs(diff.x) >= (NEARBY_OBSTACLE_LIMIT * obstacle_size_.x) ||
+                std::abs(diff.y) >= (NEARBY_OBSTACLE_LIMIT * obstacle_size_.y))
                 obs_p = obstacle.pos;
               else {
                 i--;
@@ -410,7 +607,7 @@ private:
             pre_obs = obstacle;
             obstacles_.pop();
           }
-          obstacles_marker_.markers.at(i) = make_point_maker(
+          obstacles_marker_.markers.at(i) = make_circle_maker(
             make_header(MAP_FRAME, rclcpp::Clock().now()), obs_p, i, make_color(1.0, 1.0, 0.0, 0.1),
             obstacle_size_);
         }
@@ -425,14 +622,14 @@ private:
   }
 
   // MPU追加制約
-  casadi::MX mx_obstacles_;
+  casadi::MX mx_obstacles_, mx_obstacles_size_;
   void init_parameter(casadi::Opti & opti)
   {
-    mx_obstacles_ = opti.parameter(3, OBSTACLES_MAX_SIZE);  // 障害物パラメータ
+    mx_obstacles_ = opti.parameter(2, OBSTACLES_MAX_SIZE);  // 障害物パラメータ
+    mx_obstacles_size_ = opti.parameter(2);
   }
 
   void add_cost_function(casadi::MX & cost, const casadi::MX & X, const casadi::MX & U) {}
-
 
   void add_constraints(casadi::Opti & opti, const casadi::MX & X, const casadi::MX & U)
   {
@@ -440,16 +637,9 @@ private:
     using Sl = casadi::Slice;
     for (size_t i = 1; i < (size_t)X.size2(); i++) {
       for (size_t j = 0; j < OBSTACLES_MAX_SIZE; j++) {
-        // casadi::MX mx_obstacles_size_ = opti.parameter(1);
-        // auto vel = sqrt(sumsqr(X(Sl(0, 2), i)));
-        // mx_obstacles_size_=(vel) * (MAX_OBSTACLE_SIZE - MIN_OBSTACLE_SIZE) / (mpc_config_.max_vel) + MIN_OBSTACLE_SIZE;
-        // opti.subject_to(get_guard_circle_subject(
-        //   X(Sl(3, 5), i), mx_obstacles_(Sl(0, 2), j),
-        //   MX::vertcat({mx_obstacles_size_, mx_obstacles_size_}),
-        //   "keep out"));  // 障害物制約
         opti.subject_to(get_guard_circle_subject(
           X(Sl(3, 5), i), mx_obstacles_(Sl(0, 2), j),
-          MX::vertcat({mx_obstacles_(Sl(2), j), mx_obstacles_(Sl(2), j)}),
+          MX::vertcat({mx_obstacles_size_(Sl(0)), mx_obstacles_size_(Sl(1))}),
           "keep out"));  // 障害物制約
       }
     }
@@ -459,36 +649,41 @@ private:
   {
     using namespace casadi;
     using Sl = casadi::Slice;
-    casadi::DM dm_obstacles = DM::zeros(3, OBSTACLES_MAX_SIZE);
+    casadi::DM dm_obstacles = DM::zeros(2, OBSTACLES_MAX_SIZE);
+    casadi::DM dm_obstacles_size = set_value(obstacle_size_.to_vector2());
     obstacle_t pre_obs;
-    casadi::DM dm_obs = DM::zeros(3);
+    casadi::DM dm_obs = DM::zeros(2);
     for (size_t i = 0; i < OBSTACLES_MAX_SIZE; i++) {
-      Eigen::Vector3d obs_p_mat = make_eigen_vector3(
-        Vector3d{EXECUSION_POINT_VALUE, EXECUSION_POINT_VALUE, MIN_OBSTACLE_SIZE});
+      Vector2d obs_p = {EXECUSION_POINT_VALUE, EXECUSION_POINT_VALUE};
       if (!obstacles_.empty()) {
         obstacle_t obstacle = obstacles_.top();
         if (i != 0) {
-          if ((pre_obs.pos - obstacle.pos).norm() >= (NEARBY_OBSTACLE_LIMIT * obstacle_size_))
-            obs_p_mat << obstacle.pos.x, obstacle.pos.y, obstacle_size_;
+          Vector2d diff = pre_obs.pos - obstacle.pos;
+          if (
+            std::abs(diff.x) >= (NEARBY_OBSTACLE_LIMIT * obstacle_size_.x) ||
+            std::abs(diff.y) >= (NEARBY_OBSTACLE_LIMIT * obstacle_size_.y))
+            obs_p = obstacle.pos;
           else {
             i--;
             obstacles_.pop();
             continue;
           }
         } else
-          obs_p_mat << obstacle.pos.x, obstacle.pos.y, obstacle_size_;
+          obs_p = obstacle.pos;
         pre_obs = obstacle;
         obstacles_.pop();
       }
-      std::copy(obs_p_mat.data(), obs_p_mat.data() + obs_p_mat.size(), dm_obs.ptr());
+      set_value(dm_obs, obs_p);
       dm_obstacles(Sl(), i) = dm_obs;
-      obstacles_marker_.markers.at(i) = make_point_maker(
-        make_header(MAP_FRAME, rclcpp::Clock().now()), Vector2d{obs_p_mat(0), obs_p_mat(1)}, i,
-        make_color(1.0, 0.0, 0.0, 0.1), obstacle_size_);
+      obstacles_marker_.markers.at(i) = make_circle_maker(
+        make_header(MAP_FRAME, rclcpp::Clock().now()), obs_p, i, make_color(1.0, 0.0, 0.0, 0.1),
+        obstacle_size_);
     }
-    opti.set_value(mx_obstacles_, dm_obstacles);  // 障害物の位置追加
+    opti.set_value(mx_obstacles_, dm_obstacles);            // 障害物の位置追加
+    opti.set_value(mx_obstacles_size_, dm_obstacles_size);  // 障害物のsize追加
     obstacles_pub_->publish(obstacles_marker_);
 #if defined(OBSTACLE_DETECT_DEBUG_OUTPUT)
+    std::cout << "dm_obstacles_size:" << dm_obstacles_size << std::endl;
     std::cout << "set obstacles param" << std::endl;
 #endif
   }

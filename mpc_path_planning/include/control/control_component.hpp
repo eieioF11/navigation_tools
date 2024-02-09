@@ -6,6 +6,9 @@ using namespace std::chrono_literals;
 class Control : public ExtensionNode
 {
 public:
+  using NavigateToPose = nav2_msgs::action::NavigateToPose;
+  using GoalHandleNavigateToPose = rclcpp_action::ServerGoalHandle<NavigateToPose>;
+
   Control(const rclcpp::NodeOptions & options) : Control("", options) {}
   Control(
     const std::string & name_space = "",
@@ -57,11 +60,11 @@ public:
       "mpc_path_planning/control_time", rclcpp::QoS(5));
     cmd_vel_pub_->publish(stop());
     // subscriber
-    goal_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
-      TARGET_TOPIC, rclcpp::QoS(10), [&](geometry_msgs::msg::PoseStamped::SharedPtr msg) {
-        target_pose_ = make_pose(msg->pose);
-        cmd_vel_pub_->publish(stop());
-      });
+    // goal_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
+    //   TARGET_TOPIC, rclcpp::QoS(10), [&](geometry_msgs::msg::PoseStamped::SharedPtr msg) {
+    //     target_pose_ = make_pose(msg->pose);
+    //     cmd_vel_pub_->publish(stop());
+    //   });
     opti_path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
       OPTIPATH_TOPIC, rclcpp::QoS(10).reliable(),
       [&](const nav_msgs::msg::Path::SharedPtr msg) { opti_path_ = *msg; });
@@ -72,7 +75,8 @@ public:
       ODOM_TOPIC, rclcpp::QoS(10),
       [&](nav_msgs::msg::Odometry::SharedPtr msg) { odom_vel_ = make_twist(*msg); });
     mpc_dt_sub_ = this->create_subscription<std_msgs::msg::Float32>(
-      "mpc_path_planning/dt", rclcpp::QoS(10).reliable(), [&](std_msgs::msg::Float32::SharedPtr msg) {
+      "mpc_path_planning/dt", rclcpp::QoS(10).reliable(),
+      [&](std_msgs::msg::Float32::SharedPtr msg) {
         MPC_DT = msg->data;
         if (approx_zero(MPC_DT)) {
           RCLCPP_ERROR(this->get_logger(), "MPC_DT is 0.0");
@@ -80,122 +84,178 @@ public:
         }
         inv_MPC_DT = 1.0 / MPC_DT;
       });
+    // action
+    using namespace std::placeholders;
+    action_server_ = rclcpp_action::create_server<NavigateToPose>(
+      this, "mpc_path_planning/control", std::bind(&Control::handle_goal, this, _1, _2),
+      std::bind(&Control::handle_cancel, this, _1), std::bind(&Control::handle_accepted, this, _1));
     // timer
-    control_timer_ = this->create_wall_timer(1s * CONTROL_PERIOD, [&]() {
-      if (!tf_buffer_.canTransform(
-            ROBOT_FRAME, MAP_FRAME, rclcpp::Time(0),
-            tf2::durationFromSec(1.0))) {  // 変換無いよ
-        RCLCPP_WARN(
-          this->get_logger(), "%s %s can not Transform", MAP_FRAME.c_str(), ROBOT_FRAME.c_str());
-        return;
-      }
-      auto map_to_base_link = lookup_transform(tf_buffer_, ROBOT_FRAME, MAP_FRAME);
-      auto now_time = this->get_clock()->now();
-      double vel = 0.;
-      double angular = 0.;
-      if (map_to_base_link && opti_path_ && opti_twists_) {
-        Pathd opti_path = make_path(opti_path_.value(), opti_twists_.value());
-        Pose3d base_link_pose = make_pose(map_to_base_link.value().transform);
-        RCLCPP_INFO_CHANGE(0, this->get_logger(), "get opti_path");
-#if defined(CONTROL_DEBUG_OUTPUT)
-        std::cout << "----------------------------------------------------------" << std::endl;
-        std::cout << "mpc_dt:" << MPC_DT << std::endl;
-#endif
-        // 制御出力
-        Twistd cmd_vel = make_twist(stop());
-        auto duration = now_time - opti_twists_.value().header.stamp;
-        double control_time = duration.seconds();
-        if (control_time < 0) control_time = 0;
-        size_t n0 = std::round(control_time * inv_MPC_DT);
-        control_time_pub_->publish(
-          make_float32(unit_cast<unit::time::s, unit::time::ms>(control_time)));
-        if (n0 < opti_path.points.size()) {
-          auto & target_twist0 = opti_path.points[n0].velocity;
-          auto n1 = n0;
-          if (n0 + 1 < opti_path.points.size()) n1 += 1;
-          auto & target_twist1 = opti_path.points[n1].velocity;
-#if defined(CONTROL_DEBUG_OUTPUT)
-          std::cout << "n0:" << n0 << " n1:" << n1 << std::endl;
-          std::cout << "control_time:" << control_time << std::endl;
-          std::cout << "target_twist0:" << target_twist0 << std::endl;
-          std::cout << "target_twist1:" << target_twist1 << std::endl;
-#endif
-          Vector3d v0 = {target_twist0.linear.x, target_twist0.linear.y, target_twist0.angular.z};
-          Vector3d v1 = {target_twist1.linear.x, target_twist1.linear.y, target_twist1.angular.z};
-          double t = (control_time - MPC_DT * n0);
-          if (t < 0) t = 0;
-          Vector3d v = v0 + ((v1 - v0) * inv_MPC_DT) * t;  // 線形補間
-#if defined(CONTROL_DEBUG_OUTPUT)
-          std::cout << "t:" << t << std::endl;
-          std::cout << "v:" << v << std::endl;
-#endif
-          Vector2d v_xy = {v.x, v.y};
-#if !defined(NON_HOLONOMIC)
-          v_xy.rotate(-base_link_pose.orientation.get_rpy().z);
-#if defined(CONTROL_DEBUG_OUTPUT)
-          std::cout << "rot_v_xy:" << v_xy << std::endl;
-#endif
-#endif
-          cmd_vel.linear.x = v_xy.x;
-          cmd_vel.linear.y = v_xy.y;
-          cmd_vel.angular.z = v.z;
-        }
-        target_pose_.position.z = base_link_pose.position.z = 0.0;
-        double target_dist = Vector3d::distance(target_pose_.position, base_link_pose.position);
-        double target_diff_angle =
-          std::abs(target_pose_.orientation.get_rpy().z - base_link_pose.orientation.get_rpy().z);
-        vel = cmd_vel.linear.norm();
-        angular = cmd_vel.angular.norm();
-        log(
-          cmd_vel.linear.x, cmd_vel.linear.y, cmd_vel.angular.z, odom_vel_.linear.x,
-          odom_vel_.linear.y, odom_vel_.angular.z, target_pose_.position.x, target_pose_.position.y,
-          target_pose_.orientation.get_rpy().z, base_link_pose.position.x,
-          base_link_pose.position.y, base_link_pose.orientation.get_rpy().z);
-#if defined(CONTROL_DEBUG_OUTPUT)
-        std::cout << "target_dist:" << target_dist << std::endl;
-        std::cout << "target_diff_angle:" << target_diff_angle << std::endl;
-        std::cout << "vel:" << vel << std::endl;
-        std::cout << "angular:" << angular << std::endl;
-#endif
-        // ゴール判定
-        if (target_dist < GOAL_POS_RANGE) {
-          if (target_diff_angle < GOAL_ANGLE_RANGE) {
-            if (
-              approx_zero(vel, GOAL_MIN_VEL_RANGE) &&
-              approx_zero(angular, GOAL_MIN_ANGULAR_RANGE)) {
-              RCLCPP_INFO(this->get_logger(), "goal !");
-              opti_twists_ = std::nullopt;
-              opti_path_ = std::nullopt;
-              end_pub_->publish(std_msgs::msg::Empty());
-              cmd_vel_pub_->publish(stop());
-              return;
-            }
-          }
-        }
-#if defined(CONTROL_DEBUG_OUTPUT)
-        std::cout << "control_time:" << control_time << std::endl;
-        std::cout << "cmd_vel:" << cmd_vel << std::endl;
-#endif
-        if (
-          !cmd_vel.linear.has_inf() && !cmd_vel.angular.has_inf() && !cmd_vel.linear.has_nan() &&
-          !cmd_vel.angular.has_nan())
-          cmd_vel_pub_->publish(make_geometry_twist(cmd_vel));
-        else {
-          RCLCPP_WARN(this->get_logger(), "error cmd_vel inf or nan !");
-          std::cout << "cmd_vel:" << cmd_vel << std::endl;
-          cmd_vel_pub_->publish(stop());
-        }
-      } else
-        cmd_vel_pub_->publish(stop());
-      linear_vel_pub_->publish(make_float32(vel));
-      angular_vel_pub_->publish(make_float32(angular));
-      perfomance_pub_->publish(make_float32(
-        unit_cast<unit::time::s, unit::time::ms>((now_time - pre_control_time_).seconds())));
-      pre_control_time_ = this->get_clock()->now();
-    });
+    // control_timer_ = this->create_wall_timer(1s * CONTROL_PERIOD, [&]() { control(); });
     init_data_logger(
       {"u_vx", "u_vy", "u_w", "odom_vx", "odom_vy", "odom_w", "t_x", "t_y", "t_theta", "x", "y",
        "theta"});
+  }
+
+  rclcpp_action::GoalResponse handle_goal(
+    const rclcpp_action::GoalUUID & uuid, std::shared_ptr<const NavigateToPose::Goal> goal)
+  {
+    RCLCPP_INFO(this->get_logger(), "Controler Received goal request");
+    target_pose_ = make_pose(goal->pose.pose);
+    std::cout << "goal:" << target_pose_ << std::endl;
+    cmd_vel_pub_->publish(stop());
+    (void)uuid;
+    return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
+  }
+
+  rclcpp_action::CancelResponse handle_cancel(
+    const std::shared_ptr<GoalHandleNavigateToPose> goal_handle)
+  {
+    RCLCPP_INFO(this->get_logger(), "Controler Received request to cancel goal");
+    (void)goal_handle;
+    return rclcpp_action::CancelResponse::ACCEPT;
+  }
+
+  void handle_accepted(const std::shared_ptr<GoalHandleNavigateToPose> goal_handle)
+  {
+    using namespace std::placeholders;
+    std::thread{std::bind(&Control::execute, this, _1), goal_handle}.detach();
+  }
+
+  void execute(const std::shared_ptr<GoalHandleNavigateToPose> goal_handle)
+  {
+    std::chrono::nanoseconds control_period(
+      static_cast<int>(unit_cast<unit::time::s, unit::time::ns>(CONTROL_PERIOD)));
+    rclcpp::Rate loop_rate(control_period);
+    const auto goal = goal_handle->get_goal();
+    auto feedback = std::make_shared<NavigateToPose::Feedback>();
+    auto result = std::make_shared<NavigateToPose::Result>();
+    while (rclcpp::ok()) {
+      if (control(feedback)) {
+        goal_handle->succeed(result);
+        RCLCPP_INFO(this->get_logger(), "Controler Goal succeeded");
+        return;
+      }
+      goal_handle->publish_feedback(feedback);
+      loop_rate.sleep();
+    }
+  }
+
+  bool control(const NavigateToPose::Feedback::SharedPtr feedback)
+  {
+    if (!tf_buffer_.canTransform(
+          ROBOT_FRAME, MAP_FRAME, rclcpp::Time(0),
+          tf2::durationFromSec(1.0))) {  // 変換無いよ
+      RCLCPP_WARN(
+        this->get_logger(), "%s %s can not Transform", MAP_FRAME.c_str(), ROBOT_FRAME.c_str());
+      return true;
+    }
+    auto map_to_base_link = lookup_transform(tf_buffer_, ROBOT_FRAME, MAP_FRAME);
+    auto now_time = this->get_clock()->now();
+    double vel = 0.;
+    double angular = 0.;
+    if (map_to_base_link && opti_path_ && opti_twists_) {
+      Pathd opti_path = make_path(opti_path_.value(), opti_twists_.value());
+      Pose3d base_link_pose = make_pose(map_to_base_link.value().transform);
+      RCLCPP_INFO_CHANGE(0, this->get_logger(), "get opti_path");
+#if defined(CONTROL_DEBUG_OUTPUT)
+      std::cout << "----------------------------------------------------------" << std::endl;
+      std::cout << "mpc_dt:" << MPC_DT << std::endl;
+#endif
+      // 制御出力
+      Twistd cmd_vel = make_twist(stop());
+      auto duration = now_time - opti_twists_.value().header.stamp;
+      double control_time = duration.seconds();
+      if (control_time < 0) control_time = 0;
+      size_t n0 = std::round(control_time * inv_MPC_DT);
+      control_time_pub_->publish(
+        make_float32(unit_cast<unit::time::s, unit::time::ms>(control_time)));
+      if (n0 < opti_path.points.size()) {
+        auto & target_twist0 = opti_path.points[n0].velocity;
+        auto n1 = n0;
+        if (n0 + 1 < opti_path.points.size()) n1 += 1;
+        auto & target_twist1 = opti_path.points[n1].velocity;
+#if defined(CONTROL_DEBUG_OUTPUT)
+        std::cout << "n0:" << n0 << " n1:" << n1 << std::endl;
+        std::cout << "control_time:" << control_time << std::endl;
+        std::cout << "target_twist0:" << target_twist0 << std::endl;
+        std::cout << "target_twist1:" << target_twist1 << std::endl;
+#endif
+        Vector3d v0 = {target_twist0.linear.x, target_twist0.linear.y, target_twist0.angular.z};
+        Vector3d v1 = {target_twist1.linear.x, target_twist1.linear.y, target_twist1.angular.z};
+        double t = (control_time - MPC_DT * n0);
+        if (t < 0) t = 0;
+        Vector3d v = v0 + ((v1 - v0) * inv_MPC_DT) * t;  // 線形補間
+#if defined(CONTROL_DEBUG_OUTPUT)
+        std::cout << "t:" << t << std::endl;
+        std::cout << "v:" << v << std::endl;
+#endif
+        Vector2d v_xy = {v.x, v.y};
+#if !defined(NON_HOLONOMIC)
+        v_xy.rotate(-base_link_pose.orientation.get_rpy().z);
+#if defined(CONTROL_DEBUG_OUTPUT)
+        std::cout << "rot_v_xy:" << v_xy << std::endl;
+#endif
+#endif
+        cmd_vel.linear.x = v_xy.x;
+        cmd_vel.linear.y = v_xy.y;
+        cmd_vel.angular.z = v.z;
+      }
+      target_pose_.position.z = base_link_pose.position.z = 0.0;
+      double target_dist = Vector3d::distance(target_pose_.position, base_link_pose.position);
+      double target_diff_angle =
+        std::abs(target_pose_.orientation.get_rpy().z - base_link_pose.orientation.get_rpy().z);
+      vel = cmd_vel.linear.norm();
+      angular = cmd_vel.angular.norm();
+      log(
+        cmd_vel.linear.x, cmd_vel.linear.y, cmd_vel.angular.z, odom_vel_.linear.x,
+        odom_vel_.linear.y, odom_vel_.angular.z, target_pose_.position.x, target_pose_.position.y,
+        target_pose_.orientation.get_rpy().z, base_link_pose.position.x, base_link_pose.position.y,
+        base_link_pose.orientation.get_rpy().z);
+#if defined(CONTROL_DEBUG_OUTPUT)
+      std::cout << "target_dist:" << target_dist << std::endl;
+      std::cout << "target_diff_angle:" << target_diff_angle << std::endl;
+      std::cout << "vel:" << vel << std::endl;
+      std::cout << "angular:" << angular << std::endl;
+#endif
+      // feedback
+      feedback->current_pose.pose = make_geometry_pose(base_link_pose);
+      feedback->distance_remaining = target_dist;
+      // ゴール判定
+      if (target_dist < GOAL_POS_RANGE) {
+        if (target_diff_angle < GOAL_ANGLE_RANGE) {
+          if (
+            approx_zero(vel, GOAL_MIN_VEL_RANGE) && approx_zero(angular, GOAL_MIN_ANGULAR_RANGE)) {
+            RCLCPP_INFO(this->get_logger(), "goal !");
+            opti_twists_ = std::nullopt;
+            opti_path_ = std::nullopt;
+            end_pub_->publish(std_msgs::msg::Empty());
+            cmd_vel_pub_->publish(stop());
+            return true;
+          }
+        }
+      }
+#if defined(CONTROL_DEBUG_OUTPUT)
+      std::cout << "control_time:" << control_time << std::endl;
+      std::cout << "cmd_vel:" << cmd_vel << std::endl;
+#endif
+      if (
+        !cmd_vel.linear.has_inf() && !cmd_vel.angular.has_inf() && !cmd_vel.linear.has_nan() &&
+        !cmd_vel.angular.has_nan())
+        cmd_vel_pub_->publish(make_geometry_twist(cmd_vel));
+      else {
+        RCLCPP_WARN(this->get_logger(), "error cmd_vel inf or nan !");
+        std::cout << "cmd_vel:" << cmd_vel << std::endl;
+        cmd_vel_pub_->publish(stop());
+      }
+    }
+    // else
+    //   cmd_vel_pub_->publish(stop());
+    linear_vel_pub_->publish(make_float32(vel));
+    angular_vel_pub_->publish(make_float32(angular));
+    perfomance_pub_->publish(make_float32(
+      unit_cast<unit::time::s, unit::time::ms>((now_time - pre_control_time_).seconds())));
+    pre_control_time_ = this->get_clock()->now();
+    return false;
   }
 
 private:
@@ -216,6 +276,8 @@ private:
   rclcpp::TimerBase::SharedPtr path_planning_timer_;
   rclcpp::TimerBase::SharedPtr control_timer_;
   rclcpp::Time pre_control_time_;
+  // action
+  rclcpp_action::Server<NavigateToPose>::SharedPtr action_server_;
   // subscriber
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr opti_path_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr goal_sub_;

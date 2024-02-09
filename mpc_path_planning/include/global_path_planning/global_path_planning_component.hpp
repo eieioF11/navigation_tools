@@ -1,11 +1,19 @@
 #pragma once
-#include "mpc_path_planning/mpc_path_planning_component.hpp"
 // opencv
 #include <opencv2/opencv.hpp>
 
 #include "cv_bridge/cv_bridge.h"
 // OpenMP
 #include <omp.h>
+
+// #define PLANNER_DEBUG_OUTPUT
+#define USE_OMP
+// grid path planner
+#include "common_lib/planner/a_star.hpp"
+#include "common_lib/planner/dijkstra.hpp"
+#include "common_lib/planner/extension_a_star.hpp"
+#include "common_lib/planner/wave_propagation.hpp"
+#include "mpc_path_planning/mpc_path_planning_component.hpp"
 
 #define _ENABLE_ATOMIC_ALIGNMENT_FIX
 
@@ -14,6 +22,8 @@ using namespace std::chrono_literals;
 class GlobalPathPlanning : public ExtensionNode
 {
 public:
+  using NavigateToPose = nav2_msgs::action::NavigateToPose;
+  using GoalHandleNavigateToPose = rclcpp_action::ServerGoalHandle<NavigateToPose>;
   GlobalPathPlanning(const rclcpp::NodeOptions & options) : GlobalPathPlanning("", options) {}
   GlobalPathPlanning(
     const std::string & name_space = "",
@@ -71,50 +81,92 @@ public:
       MAP_TOPIC, rclcpp::QoS(10).reliable(),
       [&](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
         map_msg_ = msg;
-        gen_distance_map_ = false;
+        calc_distance_map();
       });
-    goal_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
-      TARGET_TOPIC, rclcpp::QoS(10), [&](geometry_msgs::msg::PoseStamped::SharedPtr msg) {
-        RCLCPP_INFO(this->get_logger(), "get target!");
-        target_pose_ = make_pose(msg->pose);
-      });
-    end_sub_ = this->create_subscription<std_msgs::msg::Empty>(
-      "mpc_path_planning/end", rclcpp::QoS(10).reliable(),
-      [&](std_msgs::msg::Empty::SharedPtr msg) {
-        RCLCPP_INFO(this->get_logger(), "end!");
-        target_pose_ = std::nullopt;
-      });
+    // goal_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
+    //   TARGET_TOPIC, rclcpp::QoS(10), [&](geometry_msgs::msg::PoseStamped::SharedPtr msg) {
+    //     RCLCPP_INFO(this->get_logger(), "get target!");
+    //     target_pose_ = make_pose(msg->pose);
+    //   });
+    // end_sub_ = this->create_subscription<std_msgs::msg::Empty>(
+    //   "mpc_path_planning/end", rclcpp::QoS(10).reliable(),
+    //   [&](std_msgs::msg::Empty::SharedPtr msg) {
+    //     RCLCPP_INFO(this->get_logger(), "end!");
+    //     target_pose_ = std::nullopt;
+    //   });
     // timer
-    path_planning_timer_ = this->create_wall_timer(1s * CONTROL_PERIOD, [&]() {
-      if (!tf_buffer_.canTransform(
-            MAP_FRAME, ROBOT_FRAME, rclcpp::Time(0),
-            tf2::durationFromSec(1.0))) {  // 変換無いよ
-        RCLCPP_WARN(
-          this->get_logger(), "%s %s can not Transform", MAP_FRAME.c_str(), ROBOT_FRAME.c_str());
-        return;
-      }
-      auto map_to_base_link = lookup_transform(tf_buffer_, ROBOT_FRAME, MAP_FRAME);
-      if (map_to_base_link) {
-        base_link_pose_ = make_pose(map_to_base_link.value().transform);
-        RCLCPP_INFO_CHANGE(0, this->get_logger(), "get base_link pose");
-        if (map_msg_) {
-          calc_distance_map();
-          planner_->set_map(make_gridmap(dist_map_msg_));
-          RCLCPP_INFO_CHANGE(1, this->get_logger(), "get map");
-          if (target_pose_) {
-            PathPointd start = make_pathpoint<double>(base_link_pose_);
-            PathPointd end = make_pathpoint<double>(target_pose_.value());
-            start_planning_timer_ = rclcpp::Clock().now();
-            Pathd grid_path = planner_->path_planning(start, end);
-            global_path_pub_->publish(
-              make_nav_path(make_header(MAP_FRAME, rclcpp::Clock().now()), grid_path));
-            double calc_time = (rclcpp::Clock().now() - start_planning_timer_).seconds();
-            gpp_perfomance_pub_->publish(
-              make_float32(unit_cast<unit::time::s, unit::time::ms>(calc_time)));
-          }
+    // path_planning_timer_ = this->create_wall_timer(1s * CONTROL_PERIOD, [&]() {});
+    // action
+    using namespace std::placeholders;
+    action_server_ = rclcpp_action::create_server<NavigateToPose>(
+      this, "mpc_path_planning/global_planning",
+      std::bind(&GlobalPathPlanning::handle_goal, this, _1, _2),
+      std::bind(&GlobalPathPlanning::handle_cancel, this, _1),
+      std::bind(&GlobalPathPlanning::handle_accepted, this, _1));
+  }
+
+  rclcpp_action::GoalResponse handle_goal(
+    const rclcpp_action::GoalUUID & uuid, std::shared_ptr<const NavigateToPose::Goal> goal)
+  {
+    RCLCPP_INFO(this->get_logger(), "Controler Received goal request");
+    target_pose_ = make_pose(goal->pose.pose);
+    std::cout << "goal:" << target_pose_.value() << std::endl;
+    (void)uuid;
+    return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
+  }
+
+  rclcpp_action::CancelResponse handle_cancel(
+    const std::shared_ptr<GoalHandleNavigateToPose> goal_handle)
+  {
+    RCLCPP_INFO(this->get_logger(), "Controler Received request to cancel goal");
+    (void)goal_handle;
+    return rclcpp_action::CancelResponse::ACCEPT;
+  }
+
+  void handle_accepted(const std::shared_ptr<GoalHandleNavigateToPose> goal_handle)
+  {
+    const auto goal = goal_handle->get_goal();
+    auto feedback = std::make_shared<NavigateToPose::Feedback>();
+    auto result = std::make_shared<NavigateToPose::Result>();
+    if (path_planning(feedback)) {
+      target_pose_ = std::nullopt;
+      goal_handle->succeed(result);
+      RCLCPP_INFO(this->get_logger(), "Global Path Generation Success");
+      return;
+    }
+  }
+
+  bool path_planning(const NavigateToPose::Feedback::SharedPtr feedback)
+  {
+    if (!tf_buffer_.canTransform(
+          MAP_FRAME, ROBOT_FRAME, rclcpp::Time(0),
+          tf2::durationFromSec(1.0))) {  // 変換無いよ
+      RCLCPP_WARN(
+        this->get_logger(), "%s %s can not Transform", MAP_FRAME.c_str(), ROBOT_FRAME.c_str());
+      return false;
+    }
+    auto map_to_base_link = lookup_transform(tf_buffer_, ROBOT_FRAME, MAP_FRAME);
+    if (map_to_base_link) {
+      base_link_pose_ = make_pose(map_to_base_link.value().transform);
+      RCLCPP_INFO_CHANGE(0, this->get_logger(), "get base_link pose");
+      if (map_msg_) {
+        planner_->set_map(make_gridmap(dist_map_msg_));
+        RCLCPP_INFO_CHANGE(1, this->get_logger(), "get map");
+        if (target_pose_) {
+          PathPointd start = make_pathpoint<double>(base_link_pose_);
+          PathPointd end = make_pathpoint<double>(target_pose_.value());
+          start_planning_timer_ = rclcpp::Clock().now();
+          Pathd grid_path = planner_->path_planning(start, end);
+          global_path_pub_->publish(
+            make_nav_path(make_header(MAP_FRAME, rclcpp::Clock().now()), grid_path));
+          double calc_time = (rclcpp::Clock().now() - start_planning_timer_).seconds();
+          gpp_perfomance_pub_->publish(
+            make_float32(unit_cast<unit::time::s, unit::time::ms>(calc_time)));
+          return true;
         }
       }
-    });
+    }
+    return false;
   }
 
 private:
@@ -133,6 +185,8 @@ private:
   rclcpp::TimerBase::SharedPtr path_planning_timer_;
   rclcpp::Time start_create_distmap_time_;
   rclcpp::Time start_planning_timer_;
+  // action
+  rclcpp_action::Server<NavigateToPose>::SharedPtr action_server_;
   // subscriber
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr goal_sub_;
@@ -153,7 +207,6 @@ private:
   void calc_distance_map()
   {
     if (!map_msg_) return;
-    if (gen_distance_map_) return;
 #if defined(MAP_GEN_DEBUG_OUTPUT)
     std::cout << "calc distance map start!" << std::endl;
 #endif
@@ -202,6 +255,5 @@ private:
     std::cout << "calc_time:" << calc_time << std::endl;
     std::cout << "calc distance map end!" << std::endl;
 #endif
-    gen_distance_map_ = true;
   }
 };
