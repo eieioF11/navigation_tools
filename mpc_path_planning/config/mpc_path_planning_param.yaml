@@ -13,6 +13,7 @@ mpc_path_planning_node:
         map_frame:   "map"
         robot_frame: "base_link"
       planning_period: 0.001 #[s]
+      global_planning_period: 0.5 #[s]
       mpc:
         dt:             0.07 #[s] 0.135
         horizon_time:    5.0
