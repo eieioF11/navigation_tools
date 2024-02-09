@@ -250,7 +250,8 @@ public:
     // path_planning_timer_ = this->create_wall_timer(1s * PLANNING_PERIOD, [&]() {});
     init_data_logger({"odom_vx", "odom_vy", "odom_w", "u_vx", "u_vy", "u_w"});
     // action serverの起動待機
-    while (!control_action_client_->wait_for_action_server()&&!global_planning_action_client_->wait_for_action_server()) {
+    while (!control_action_client_->wait_for_action_server() &&
+           !global_planning_action_client_->wait_for_action_server()) {
       RCLCPP_INFO(get_logger(), "Waiting for action server...");
     }
     // }
@@ -301,8 +302,7 @@ public:
         RCLCPP_INFO(this->get_logger(), "Controler Goal succeeded");
         return;
       }
-      if (target_pose_)
-        global_planner_send_target(target_pose_.value());
+      if (target_pose_) global_planner_send_target(target_pose_.value());
       path_planning(feedback);
       goal_handle->publish_feedback(feedback);
       loop_rate.sleep();
@@ -406,7 +406,6 @@ public:
       };
     //controlerに送信
     control_action_client_->async_send_goal(goal_msg, send_goal_options);
-
   }
   void global_planner_send_target(Pose3d target_pose)
   {
@@ -493,41 +492,41 @@ private:
     obstacles_ = empty;  // 要素の削除
   }
 
-  void set_obstacle()
-  {
-    using namespace casadi;
-    using Sl = casadi::Slice;
-    casadi::DM dm_obstacles = DM::zeros(2, OBSTACLES_MAX_SIZE);
-    casadi::DM dm_obstacles_size = set_value(obstacle_size_.to_vector2());
-    obstacle_t pre_obs;
-    casadi::DM dm_obs = DM::zeros(2);
-    for (size_t i = 0; i < OBSTACLES_MAX_SIZE; i++) {
-      Vector2d obs_p = {EXECUSION_POINT_VALUE, EXECUSION_POINT_VALUE};
-      if (!obstacles_.empty()) {
-        obstacle_t obstacle = obstacles_.top();
-        if (i != 0) {
-          Vector2d diff = pre_obs.pos - obstacle.pos;
-          if (
-            std::abs(diff.x) >= (NEARBY_OBSTACLE_LIMIT * obstacle_size_.x) ||
-            std::abs(diff.y) >= (NEARBY_OBSTACLE_LIMIT * obstacle_size_.y))
-            obs_p = obstacle.pos;
-          else {
-            i--;
-            obstacles_.pop();
-            continue;
-          }
-        } else
-          obs_p = obstacle.pos;
-        pre_obs = obstacle;
-        obstacles_.pop();
-      }
-      set_value(dm_obs, obs_p);
-      dm_obstacles(Sl(), i) = dm_obs;
-      obstacles_marker_.markers.at(i) = make_circle_maker(
-        make_header(MAP_FRAME, rclcpp::Clock().now()), obs_p, i, make_color(1.0, 0.0, 0.0, 0.1),
-        obstacle_size_);
-    }
-  }
+  // std::pair<casadi::DM, casadi::DM> set_obstacle(std_msgs::msg::ColorRGBA color)
+  // {
+  //   using namespace casadi;
+  //   using Sl = casadi::Slice;
+  //   casadi::DM dm_obstacles = DM::zeros(2, OBSTACLES_MAX_SIZE);
+  //   casadi::DM dm_obstacles_size = set_value(obstacle_size_.to_vector2());
+  //   obstacle_t pre_obs;
+  //   casadi::DM dm_obs = DM::zeros(2);
+  //   for (size_t i = 0; i < OBSTACLES_MAX_SIZE; i++) {
+  //     Vector2d obs_p = {EXECUSION_POINT_VALUE, EXECUSION_POINT_VALUE};
+  //     if (!obstacles_.empty()) {
+  //       obstacle_t obstacle = obstacles_.top();
+  //       if (i != 0) {
+  //         Vector2d diff = pre_obs.pos - obstacle.pos;
+  //         if (
+  //           std::abs(diff.x) >= (NEARBY_OBSTACLE_LIMIT * obstacle_size_.x) ||
+  //           std::abs(diff.y) >= (NEARBY_OBSTACLE_LIMIT * obstacle_size_.y))
+  //           obs_p = obstacle.pos;
+  //         else {
+  //           i--;
+  //           obstacles_.pop();
+  //           continue;
+  //         }
+  //       } else
+  //         obs_p = obstacle.pos;
+  //       pre_obs = obstacle;
+  //       obstacles_.pop();
+  //     }
+  //     set_value(dm_obs, obs_p);
+  //     dm_obstacles(Sl(), i) = dm_obs;
+  //     obstacles_marker_.markers.at(i) = make_circle_maker(
+  //       make_header(MAP_FRAME, rclcpp::Clock().now()), obs_p, i, color, obstacle_size_);
+  //     return std::make_pair(dm_obstacles, dm_obstacles_size);
+  //   }
+  // }
 
   void obstacles_detect(Pose3d robot_pose)
   {

@@ -35,15 +35,12 @@ public:
     RCLCPP_INFO(this->get_logger(), "start global_path_planning_node");
     // get param
     std::string MAP_TOPIC = param<std::string>("global_path_planning.topic_name.map", "/map");
-    std::string TARGET_TOPIC =
-      param<std::string>("global_path_planning.topic_name.target", "/goal_pose");
     std::string GLOBALPATH_TOPIC = param<std::string>(
       "global_path_planning.topic_name.global_path", "global_path_planning/path");
     // frame
     MAP_FRAME = param<std::string>("global_path_planning.tf_frame.map_frame", "map");
     ROBOT_FRAME = param<std::string>("global_path_planning.tf_frame.robot_frame", "base_link");
     // setup
-    CONTROL_PERIOD = param<double>("global_path_planning.planning_period", 0.001);
     THRESHOLD = param<int>("global_path_planning.dist_map.threshold", 20);
     ALPHA = param<double>("global_path_planning.dist_map.alpha", -0.2);
     BETA = param<double>("global_path_planning.dist_map.beta", -1.0);
@@ -83,19 +80,6 @@ public:
         map_msg_ = msg;
         calc_distance_map();
       });
-    // goal_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
-    //   TARGET_TOPIC, rclcpp::QoS(10), [&](geometry_msgs::msg::PoseStamped::SharedPtr msg) {
-    //     RCLCPP_INFO(this->get_logger(), "get target!");
-    //     target_pose_ = make_pose(msg->pose);
-    //   });
-    // end_sub_ = this->create_subscription<std_msgs::msg::Empty>(
-    //   "mpc_path_planning/end", rclcpp::QoS(10).reliable(),
-    //   [&](std_msgs::msg::Empty::SharedPtr msg) {
-    //     RCLCPP_INFO(this->get_logger(), "end!");
-    //     target_pose_ = std::nullopt;
-    //   });
-    // timer
-    // path_planning_timer_ = this->create_wall_timer(1s * CONTROL_PERIOD, [&]() {});
     // action
     using namespace std::placeholders;
     action_server_ = rclcpp_action::create_server<NavigateToPose>(
@@ -173,7 +157,6 @@ private:
   // param
   std::string MAP_FRAME;
   std::string ROBOT_FRAME;
-  double CONTROL_PERIOD;
   uint8_t THRESHOLD = 20;
   double ALPHA = -0.2;
   double BETA = -0.1;
@@ -182,15 +165,12 @@ private:
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener listener_;
   // timer
-  rclcpp::TimerBase::SharedPtr path_planning_timer_;
   rclcpp::Time start_create_distmap_time_;
   rclcpp::Time start_planning_timer_;
   // action
   rclcpp_action::Server<NavigateToPose>::SharedPtr action_server_;
   // subscriber
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
-  rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr goal_sub_;
-  rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr end_sub_;
   // publisher
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr dist_map_pub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr global_path_pub_;

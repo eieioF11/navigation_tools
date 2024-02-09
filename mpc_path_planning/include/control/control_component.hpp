@@ -23,8 +23,6 @@ public:
       param<std::string>("control.topic_name.opti_path", "mpc_path_planning/opti_path");
     std::string OPTITWISTS_TOPIC =
       param<std::string>("control.topic_name.opti_twists", "mpc_path_planning/twists");
-    std::string TARGET_TOPIC =
-      param<std::string>("mpc_path_planning.topic_name.target", "/goal_pose");
     std::string CMD_VEL_TOPIC = param<std::string>("control.topic_name.cmd_vel", "/cmd_vel");
     std::string ODOM_TOPIC = param<std::string>("control.topic_name.odom", "/odom");
     // frame
@@ -32,7 +30,6 @@ public:
     ROBOT_FRAME = param<std::string>("control.tf_frame.robot_frame", "base_link");
     // setup
     CONTROL_PERIOD = param<double>("control.control_period", 0.001);
-    // MPC_DT = param<double>("control.mpc_dt", 0.001);
     // 収束判定
     GOAL_POS_RANGE = param<double>("control.goal.pos_range", 0.01);
     GOAL_ANGLE_RANGE = unit_cast<unit::angle::rad>(param<double>("control.goal.angle_range", 0.1));
@@ -46,8 +43,6 @@ public:
     inv_MPC_DT = 1.0 / MPC_DT;
     pre_control_time_ = this->get_clock()->now();
     // publisher
-    end_pub_ = this->create_publisher<std_msgs::msg::Empty>(
-      "mpc_path_planning/end", rclcpp::QoS(10).reliable());
     cmd_vel_pub_ =
       this->create_publisher<geometry_msgs::msg::Twist>(CMD_VEL_TOPIC, rclcpp::QoS(10));
     linear_vel_pub_ = this->create_publisher<std_msgs::msg::Float32>(
@@ -59,12 +54,6 @@ public:
     control_time_pub_ = this->create_publisher<std_msgs::msg::Float32>(
       "mpc_path_planning/control_time", rclcpp::QoS(5));
     cmd_vel_pub_->publish(stop());
-    // subscriber
-    // goal_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
-    //   TARGET_TOPIC, rclcpp::QoS(10), [&](geometry_msgs::msg::PoseStamped::SharedPtr msg) {
-    //     target_pose_ = make_pose(msg->pose);
-    //     cmd_vel_pub_->publish(stop());
-    //   });
     opti_path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
       OPTIPATH_TOPIC, rclcpp::QoS(10).reliable(),
       [&](const nav_msgs::msg::Path::SharedPtr msg) { opti_path_ = *msg; });
@@ -89,8 +78,6 @@ public:
     action_server_ = rclcpp_action::create_server<NavigateToPose>(
       this, "mpc_path_planning/control", std::bind(&Control::handle_goal, this, _1, _2),
       std::bind(&Control::handle_cancel, this, _1), std::bind(&Control::handle_accepted, this, _1));
-    // timer
-    // control_timer_ = this->create_wall_timer(1s * CONTROL_PERIOD, [&]() { control(); });
     init_data_logger(
       {"u_vx", "u_vy", "u_w", "odom_vx", "odom_vy", "odom_w", "t_x", "t_y", "t_theta", "x", "y",
        "theta"});
@@ -228,7 +215,6 @@ public:
             RCLCPP_INFO(this->get_logger(), "goal !");
             opti_twists_ = std::nullopt;
             opti_path_ = std::nullopt;
-            end_pub_->publish(std_msgs::msg::Empty());
             cmd_vel_pub_->publish(stop());
             return true;
           }
@@ -280,13 +266,11 @@ private:
   rclcpp_action::Server<NavigateToPose>::SharedPtr action_server_;
   // subscriber
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr opti_path_sub_;
-  rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr goal_sub_;
   rclcpp::Subscription<extension_msgs::msg::TwistMultiArray>::SharedPtr opti_twists_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
   rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr mpc_dt_sub_;
   // publisher
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_pub_;
-  rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr end_pub_;
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr linear_vel_pub_;
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr angular_vel_pub_;
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr perfomance_pub_;

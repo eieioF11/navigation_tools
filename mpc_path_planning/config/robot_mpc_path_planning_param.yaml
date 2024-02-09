@@ -59,12 +59,10 @@ global_path_planning_node:
     global_path_planning:
       topic_name:
         map: "/storage_map"
-        target: "/goal_pose"
         global_path: "global_path_planning/path"
       tf_frame:
         map_frame: "map"
         robot_frame: "base_link"
-      planning_period: 0.5 #[s]
       dist_map:
         threshold: 20 #(0~255)距離場の値がthreshold[pixel]より小さい値のみ使用する、大きい値は255
         # map[x,y] = GridMap::WALL_VALUE*exp(img[x,y]+alpha)+beta ※img[x,y]:0~1の値で1が障害物
@@ -78,13 +76,11 @@ control_node:
       topic_name:
         opti_path: "mpc_path_planning/opti_path"
         opti_twists: "mpc_path_planning/twists"
-        target: "/goal_pose"
         cmd_vel: "cmd_vel"
       tf_frame:
         map_frame: "map"
         robot_frame: "base_link"
       control_period: 0.001 #[s]
-      # mpc_dt: 0.08
       goal:
         pos_range: 0.14 #[m] 0.05
         angle_range: 4.0 #[deg] 0.5
