@@ -228,7 +228,7 @@ public:
       MAP_TOPIC, rclcpp::QoS(10).reliable(),
       [&](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
         map_ = make_gridmap(*msg);
-        if (!target_pose_) {//デバック用
+        if (!target_pose_) {  //デバック用
           auto map_to_base_link = lookup_transform(tf_buffer_, ROBOT_FRAME, MAP_FRAME);
           if (map_to_base_link) {
             Pose3d base_link_pose = make_pose(map_to_base_link.value().transform);
@@ -340,7 +340,9 @@ public:
       if (global_planner_timer.cyclic(GLOBAL_PLANNING_PERIOD)) {
         if (target_pose_) global_planner_send_target(target_pose_.value());
       }
-      if (mpc_planner_timer.cyclic(PLANNING_PERIOD)) path_planning(feedback);
+      if (global_path_) {
+        if (mpc_planner_timer.cyclic(PLANNING_PERIOD)) path_planning(feedback);
+      }
       goal_handle->publish_feedback(feedback);
       loop_rate.sleep();
     }
@@ -363,45 +365,44 @@ public:
       obstacles_detect(base_link_pose);
       RCLCPP_INFO_CHANGE(0, this->get_logger(), "get base_link pose");
       // 経路計算
-      if (global_path_) {
+
 #if defined(NON_HOLONOMIC)
-        now_vel_.linear.y = 0.0;
+      now_vel_.linear.y = 0.0;
 #endif
-        if (target_pose_) {
+      if (target_pose_) {
 #if defined(PLANNING_DEBUG_OUTPUT)
-          std::cout << "----------------------------------------------------------" << std::endl;
-          std::cout << "now_vel:" << now_vel_ << std::endl;
-          std::cout << "vel_error_:" << vel_error_ << std::endl;
-          std::cout << "end:" << target_pose_.value() << std::endl;
-          std::cout << "start:" << base_link_pose << std::endl;
-          std::cout << "end:" << target_pose_.value() << std::endl;
+        std::cout << "----------------------------------------------------------" << std::endl;
+        std::cout << "now_vel:" << now_vel_ << std::endl;
+        std::cout << "vel_error_:" << vel_error_ << std::endl;
+        std::cout << "end:" << target_pose_.value() << std::endl;
+        std::cout << "start:" << base_link_pose << std::endl;
+        std::cout << "end:" << target_pose_.value() << std::endl;
 #endif
-          PathPointd start = make_pathpoint<double>(base_link_pose, now_vel_);
-          PathPointd end = make_pathpoint<double>(target_pose_.value());
-          // path planning
-          Pathd opti_path = planner_->path_planning(start, end);
-          Pathd init_path = planner_->get_init_path();
-          // publish grid path
-          init_path_pub_->publish(
-            make_nav_path(make_header(MAP_FRAME, rclcpp::Clock().now()), init_path));
-          if (planner_->optimization()) {  // 最適化成功
-            // publish opti path
-            auto [o_ppath, o_vpath, o_apath] =
-              make_msg_paths(make_header(MAP_FRAME, rclcpp::Clock().now()), opti_path);
-            mpc_dt_pub_->publish(make_float32(mpc_config_.dt));
-            opti_path_pub_->publish(o_ppath);
-            opti_twists_pub_->publish(o_vpath);
-            // debug
-            static long double sum = 0.0;
-            static long count = 1;
-            sum += planner_->get_solve_time();
-            double ave_solve_time = sum / count;
-            count++;
-            perfomance_ave_pub_->publish(
-              make_float32(unit_cast<unit::time::s, unit::time::ms>(ave_solve_time)));
-            perfomance_pub_->publish(
-              make_float32(unit_cast<unit::time::s, unit::time::ms>(planner_->get_solve_time())));
-          }
+        PathPointd start = make_pathpoint<double>(base_link_pose, now_vel_);
+        PathPointd end = make_pathpoint<double>(target_pose_.value());
+        // path planning
+        Pathd opti_path = planner_->path_planning(start, end);
+        Pathd init_path = planner_->get_init_path();
+        // publish grid path
+        init_path_pub_->publish(
+          make_nav_path(make_header(MAP_FRAME, rclcpp::Clock().now()), init_path));
+        if (planner_->optimization()) {  // 最適化成功
+          // publish opti path
+          auto [o_ppath, o_vpath, o_apath] =
+            make_msg_paths(make_header(MAP_FRAME, rclcpp::Clock().now()), opti_path);
+          mpc_dt_pub_->publish(make_float32(mpc_config_.dt));
+          opti_path_pub_->publish(o_ppath);
+          opti_twists_pub_->publish(o_vpath);
+          // debug
+          static long double sum = 0.0;
+          static long count = 1;
+          sum += planner_->get_solve_time();
+          double ave_solve_time = sum / count;
+          count++;
+          perfomance_ave_pub_->publish(
+            make_float32(unit_cast<unit::time::s, unit::time::ms>(ave_solve_time)));
+          perfomance_pub_->publish(
+            make_float32(unit_cast<unit::time::s, unit::time::ms>(planner_->get_solve_time())));
         }
       }
     }

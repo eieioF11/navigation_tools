@@ -17,7 +17,7 @@ mpc_path_planning_node:
       global_planning_period: 0.5 #[s]
       mpc:
         dt: 0.1 #[s] 0.135
-        horizon_time: 4.0
+        horizon_time: 3.5
         # pos_error:      0.035 #0.015 # 0.01
         pos_error: 2.5 #[m] 0.8
         # ロボット制約
@@ -50,8 +50,8 @@ mpc_path_planning_node:
           compl_inf_tol: 0.001 #相補性条件の「許容」しきい値 def 0.0001
       obstacle_detect:
         dist: 5.0 #[m]
-        max_obstacle_size: 0.9 #[m]
-        min_obstacle_size: 0.45 #[m]
+        max_obstacle_size: 1.0 #[m]
+        min_obstacle_size: 0.5 #[m]
         list_size: 20
         nearby_obstacle_limit: 0.7 #[m]
 
