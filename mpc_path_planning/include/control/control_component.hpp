@@ -89,6 +89,7 @@ public:
     RCLCPP_INFO(this->get_logger(), "Controler Received goal request");
     target_pose_ = make_pose(goal->pose.pose);
     std::cout << "goal:" << target_pose_ << std::endl;
+    time_out_ = false;
     cmd_vel_pub_->publish(stop());
     (void)uuid;
     return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
@@ -99,6 +100,10 @@ public:
   {
     RCLCPP_INFO(this->get_logger(), "Controler Received request to cancel goal");
     (void)goal_handle;
+    opti_twists_ = std::nullopt;
+    opti_path_ = std::nullopt;
+    cmd_vel_pub_->publish(stop());
+    controller_running_ = false;
     return rclcpp_action::CancelResponse::ACCEPT;
   }
 
@@ -116,10 +121,16 @@ public:
     const auto goal = goal_handle->get_goal();
     auto feedback = std::make_shared<NavigateToPose::Feedback>();
     auto result = std::make_shared<NavigateToPose::Result>();
-    while (rclcpp::ok()) {
+    controller_running_ = true;
+    while (rclcpp::ok()&&controller_running_) {
       if (control(feedback)) {
         goal_handle->succeed(result);
         RCLCPP_INFO(this->get_logger(), "Controler Goal succeeded");
+        return;
+      }
+      if (time_out_) {
+        time_out_ = false;
+        RCLCPP_INFO(this->get_logger(), "Controler Time out");
         return;
       }
       goal_handle->publish_feedback(feedback);
@@ -186,6 +197,9 @@ public:
         cmd_vel.linear.x = v_xy.x;
         cmd_vel.linear.y = v_xy.y;
         cmd_vel.angular.z = v.z;
+      } else {
+        RCLCPP_WARN(this->get_logger(), "control_time over opti_path.points.size()");
+        time_out_ = true;
       }
       target_pose_.position.z = base_link_pose.position.z = 0.0;
       double target_dist = Vector3d::distance(target_pose_.position, base_link_pose.position);
@@ -245,6 +259,8 @@ public:
   }
 
 private:
+  bool time_out_ = false;
+  bool controller_running_ = false;
   // param
   std::string MAP_FRAME;
   std::string ROBOT_FRAME;
@@ -259,8 +275,6 @@ private:
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener listener_;
   // timer
-  rclcpp::TimerBase::SharedPtr path_planning_timer_;
-  rclcpp::TimerBase::SharedPtr control_timer_;
   rclcpp::Time pre_control_time_;
   // action
   rclcpp_action::Server<NavigateToPose>::SharedPtr action_server_;

@@ -92,7 +92,7 @@ public:
   rclcpp_action::GoalResponse handle_goal(
     const rclcpp_action::GoalUUID & uuid, std::shared_ptr<const NavigateToPose::Goal> goal)
   {
-    RCLCPP_INFO(this->get_logger(), "Controler Received goal request");
+    RCLCPP_INFO(this->get_logger(), "global_path_planner Received goal request");
     target_pose_ = make_pose(goal->pose.pose);
     std::cout << "goal:" << target_pose_.value() << std::endl;
     (void)uuid;
@@ -102,7 +102,8 @@ public:
   rclcpp_action::CancelResponse handle_cancel(
     const std::shared_ptr<GoalHandleNavigateToPose> goal_handle)
   {
-    RCLCPP_INFO(this->get_logger(), "Controler Received request to cancel goal");
+    RCLCPP_INFO(this->get_logger(), "global_path_planner Received request to cancel goal");
+    target_pose_ = std::nullopt;
     (void)goal_handle;
     return rclcpp_action::CancelResponse::ACCEPT;
   }
@@ -118,6 +119,7 @@ public:
       RCLCPP_INFO(this->get_logger(), "Global Path Generation Success");
       return;
     }
+    goal_handle->canceled(result);
   }
 
   bool path_planning(const NavigateToPose::Feedback::SharedPtr feedback)
@@ -141,6 +143,10 @@ public:
           PathPointd end = make_pathpoint<double>(target_pose_.value());
           start_planning_timer_ = rclcpp::Clock().now();
           Pathd grid_path = planner_->path_planning(start, end);
+          if (planner_->time_out()) {
+            RCLCPP_WARN(this->get_logger(), "path planning time out");
+            return false;
+          }
           global_path_pub_->publish(
             make_nav_path(make_header(MAP_FRAME, rclcpp::Clock().now()), grid_path));
           double calc_time = (rclcpp::Clock().now() - start_planning_timer_).seconds();
