@@ -82,6 +82,7 @@ control_node:
         map_frame: "map"
         robot_frame: "base_link"
       control_period: 0.001 #[s]
+      time_out: 10.0 #[s]
       goal:
         pos_range: 0.14 #[m] 0.05
         angle_range: 4.0 #[deg] 0.5

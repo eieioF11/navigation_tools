@@ -24,19 +24,20 @@
 #include <sensor_msgs/msg/point_cloud.hpp>
 #include <sensor_msgs/point_cloud_conversion.hpp>
 #include <std_msgs/msg/empty.hpp>
+// common_lib
+#define USE_OMP
+#include "common_lib/common_lib.hpp"
 
+// common_lib utility
 #include "common_lib/ros2_utility/extension_msgs_util.hpp"
 #include "common_lib/ros2_utility/marker_util.hpp"
 #include "common_lib/ros2_utility/msg_util.hpp"
 #include "common_lib/ros2_utility/ros_opencv_util.hpp"
 #include "common_lib/ros2_utility/tf_util.hpp"
 #include "extension_node/extension_node.hpp"
-// other
-#include "common_lib/common_lib.hpp"
 
-// mpc
+// planner
 #define PLANNER_DEBUG_OUTPUT
-#define USE_OMP
 #include "common_lib/planner/mpc_path_planner.hpp"
 
 #define _ENABLE_ATOMIC_ALIGNMENT_FIX
@@ -202,6 +203,8 @@ public:
       "mpc_path_planning/obstacles", rclcpp::QoS(5));
     mpc_dt_pub_ = this->create_publisher<std_msgs::msg::Float32>(
       "mpc_path_planning/dt", rclcpp::QoS(10).reliable());
+    target_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>(
+      "mpc_path_planning/target", rclcpp::QoS(10));
     // subscriber
     goal_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
       TARGET_TOPIC, rclcpp::QoS(10), [&](geometry_msgs::msg::PoseStamped::SharedPtr msg) {
@@ -222,8 +225,12 @@ public:
         planner_->set_grid_path(global_path_.value());
       });
     odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
-      ODOM_TOPIC, rclcpp::QoS(10),
-      [&](nav_msgs::msg::Odometry::SharedPtr msg) { now_vel_ = make_twist(*msg); });
+      ODOM_TOPIC, rclcpp::QoS(10), [&](nav_msgs::msg::Odometry::SharedPtr msg) {
+        now_vel_ = make_twist(*msg);
+#if defined(NON_HOLONOMIC)
+        now_vel_.linear.y = 0.0;
+#endif
+      });
     map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
       MAP_TOPIC, rclcpp::QoS(10).reliable(),
       [&](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
@@ -233,6 +240,8 @@ public:
           if (map_to_base_link) {
             Pose3d base_link_pose = make_pose(map_to_base_link.value().transform);
             obstacles_detect(base_link_pose);
+            set_obstacle(make_color(1.0, 1.0, 0.0, 0.1));
+            obstacles_pub_->publish(obstacles_marker_);
           }
         }
       });
@@ -278,7 +287,8 @@ public:
       global_planner_running_ = false;
     }
     target_pose_ = make_pose(goal->pose.pose);
-    std::cout << "goal:" << target_pose_.value() << std::endl;
+    std::cout << "target:" << target_pose_.value() << std::endl;
+    planner_->reset();
     controler_send_target(target_pose_.value());
     global_planner_send_target(target_pose_.value());
     (void)uuid;
@@ -295,6 +305,7 @@ public:
     controller_running_ = false;
     global_planner_running_ = false;
     planner_running_ = false;
+    planner_->reset();
     control_action_client_->async_cancel_all_goals();
     global_planning_action_client_->async_cancel_all_goals();
     return rclcpp_action::CancelResponse::ACCEPT;
@@ -327,6 +338,7 @@ public:
         controller_running_ = false;
         global_planner_running_ = false;
         planner_running_ = false;
+        planner_->reset();
         goal_handle->succeed(result);
         RCLCPP_INFO(this->get_logger(), "Goal succeeded");
         return;
@@ -340,9 +352,7 @@ public:
       if (global_planner_timer.cyclic(GLOBAL_PLANNING_PERIOD)) {
         if (target_pose_) global_planner_send_target(target_pose_.value());
       }
-      if (global_path_) {
-        if (mpc_planner_timer.cyclic(PLANNING_PERIOD)) path_planning(feedback);
-      }
+      if (mpc_planner_timer.cyclic(PLANNING_PERIOD)) path_planning(feedback);
       goal_handle->publish_feedback(feedback);
       loop_rate.sleep();
     }
@@ -365,10 +375,6 @@ public:
       obstacles_detect(base_link_pose);
       RCLCPP_INFO_CHANGE(0, this->get_logger(), "get base_link pose");
       // 経路計算
-
-#if defined(NON_HOLONOMIC)
-      now_vel_.linear.y = 0.0;
-#endif
       if (target_pose_) {
 #if defined(PLANNING_DEBUG_OUTPUT)
         std::cout << "----------------------------------------------------------" << std::endl;
@@ -378,6 +384,7 @@ public:
         std::cout << "start:" << base_link_pose << std::endl;
         std::cout << "end:" << target_pose_.value() << std::endl;
 #endif
+        publish_target(base_link_pose);
         PathPointd start = make_pathpoint<double>(base_link_pose, now_vel_);
         PathPointd end = make_pathpoint<double>(target_pose_.value());
         // path planning
@@ -515,6 +522,7 @@ private:
   // publisher
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr init_path_pub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr opti_path_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr target_pub_;
   rclcpp::Publisher<extension_msgs::msg::TwistMultiArray>::SharedPtr opti_twists_pub_;
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr mpc_dt_pub_;
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr perfomance_pub_;
@@ -530,6 +538,18 @@ private:
   std::optional<Pathd> global_path_;
   std::shared_ptr<MPCPathPlanner> planner_;
 
+  void publish_target(const Pose3d &base_link_pose)
+  {
+    static Timerd debug_timer;
+    if (debug_timer.cyclic(1.0)) {
+      geometry_msgs::msg::PoseStamped target_msg;
+      target_msg.header = make_header(MAP_FRAME, rclcpp::Clock().now());
+      target_msg.pose = make_geometry_pose(target_pose_.value());
+      target_msg.pose.position.z =  base_link_pose.position.z;
+      target_pub_->publish(target_msg);
+    }
+  }
+
   struct obstacle_t
   {
     Vector2d pos;
@@ -538,7 +558,6 @@ private:
   };
   std::priority_queue<obstacle_t> obstacles_;
   visualization_msgs::msg::MarkerArray obstacles_marker_;
-  // double obstacle_size_;
   Vector3d obstacle_size_;
 
   void clear_obstacles()
@@ -637,37 +656,7 @@ private:
       std::cout << "vel:" << vel << std::endl;
       std::cout << "obstacle_size:" << obstacle_size_ << std::endl;
 #endif
-      // デバック 障害物表示
-      if (!target_pose_) {
-        // obstacle_t pre_obs;
-        // for (size_t i = 0; i < OBSTACLES_MAX_SIZE; i++) {
-        //   Vector2d obs_p = {EXECUSION_POINT_VALUE, EXECUSION_POINT_VALUE};
-        //   if (!obstacles_.empty()) {
-        //     obstacle_t obstacle = obstacles_.top();
-        //     if (i != 0) {
-        //       // if ((pre_obs.pos - obstacle.pos).norm() >= (NEARBY_OBSTACLE_LIMIT * obstacle_size_))
-        //       Vector2d diff = pre_obs.pos - obstacle.pos;
-        //       if (
-        //         std::abs(diff.x) >= (NEARBY_OBSTACLE_LIMIT * obstacle_size_.x) ||
-        //         std::abs(diff.y) >= (NEARBY_OBSTACLE_LIMIT * obstacle_size_.y))
-        //         obs_p = obstacle.pos;
-        //       else {
-        //         i--;
-        //         obstacles_.pop();
-        //         continue;
-        //       }
-        //     } else
-        //       obs_p = obstacle.pos;
-        //     pre_obs = obstacle;
-        //     obstacles_.pop();
-        //   }
-        //   obstacles_marker_.markers.at(i) = make_circle_maker(
-        //     make_header(MAP_FRAME, rclcpp::Clock().now()), obs_p, i, make_color(1.0, 1.0, 0.0, 0.1),
-        //     obstacle_size_);
-        // }
-        set_obstacle(make_color(1.0, 1.0, 0.0, 0.1));
-        obstacles_pub_->publish(obstacles_marker_);
-      }
+
 #if defined(OBSTACLE_DETECT_DEBUG_OUTPUT)
       std::cout << "obstacles size:" << obstacles_.size() << std::endl;
       std::cout << "obstacles detect time:" << (rclcpp::Clock().now() - start).seconds()
@@ -702,41 +691,7 @@ private:
 
   void set_user_param(casadi::Opti & opti)
   {
-    // using namespace casadi;
-    // using Sl = casadi::Slice;
-    // casadi::DM dm_obstacles = DM::zeros(2, OBSTACLES_MAX_SIZE);
-    // casadi::DM dm_obstacles_size = set_value(obstacle_size_.to_vector2());
-    // obstacle_t pre_obs;
-    // casadi::DM dm_obs = DM::zeros(2);
-    // for (size_t i = 0; i < OBSTACLES_MAX_SIZE; i++) {
-    //   Vector2d obs_p = {EXECUSION_POINT_VALUE, EXECUSION_POINT_VALUE};
-    //   if (!obstacles_.empty()) {
-    //     obstacle_t obstacle = obstacles_.top();
-    //     if (i != 0) {
-    //       Vector2d diff = pre_obs.pos - obstacle.pos;
-    //       if (
-    //         std::abs(diff.x) >= (NEARBY_OBSTACLE_LIMIT * obstacle_size_.x) ||
-    //         std::abs(diff.y) >= (NEARBY_OBSTACLE_LIMIT * obstacle_size_.y))
-    //         obs_p = obstacle.pos;
-    //       else {
-    //         i--;
-    //         obstacles_.pop();
-    //         continue;
-    //       }
-    //     } else
-    //       obs_p = obstacle.pos;
-    //     pre_obs = obstacle;
-    //     obstacles_.pop();
-    //   }
-    //   set_value(dm_obs, obs_p);
-    //   dm_obstacles(Sl(), i) = dm_obs;
-    //   obstacles_marker_.markers.at(i) = make_circle_maker(
-    //     make_header(MAP_FRAME, rclcpp::Clock().now()), obs_p, i, make_color(1.0, 0.0, 0.0, 0.1),
-    //     obstacle_size_);
-    // }
     auto dm_obstacles = set_obstacle(make_color(1.0, 0.0, 0.0, 0.1));
-    // opti.set_value(mx_obstacles_, dm_obstacles);            // 障害物の位置追加
-    // opti.set_value(mx_obstacles_size_, dm_obstacles_size);  // 障害物のsize追加
     opti.set_value(mx_obstacles_, dm_obstacles.first);        // 障害物の位置追加
     opti.set_value(mx_obstacles_size_, dm_obstacles.second);  // 障害物のsize追加
     obstacles_pub_->publish(obstacles_marker_);

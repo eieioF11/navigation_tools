@@ -119,7 +119,7 @@ public:
       RCLCPP_INFO(this->get_logger(), "Global Path Generation Success");
       return;
     }
-    goal_handle->canceled(result);
+    // goal_handle->canceled(result);
   }
 
   bool path_planning(const NavigateToPose::Feedback::SharedPtr feedback)

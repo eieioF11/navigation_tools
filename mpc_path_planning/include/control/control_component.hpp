@@ -30,6 +30,7 @@ public:
     ROBOT_FRAME = param<std::string>("control.tf_frame.robot_frame", "base_link");
     // setup
     CONTROL_PERIOD = param<double>("control.control_period", 0.001);
+    TIME_OUT = param<double>("control.time_out", 10.0);
     // 収束判定
     GOAL_POS_RANGE = param<double>("control.goal.pos_range", 0.01);
     GOAL_ANGLE_RANGE = unit_cast<unit::angle::rad>(param<double>("control.goal.angle_range", 0.1));
@@ -89,7 +90,7 @@ public:
     RCLCPP_INFO(this->get_logger(), "Controler Received goal request");
     target_pose_ = make_pose(goal->pose.pose);
     std::cout << "goal:" << target_pose_ << std::endl;
-    time_out_ = false;
+    control_time_over_ = false;
     cmd_vel_pub_->publish(stop());
     (void)uuid;
     return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
@@ -104,7 +105,7 @@ public:
     opti_path_ = std::nullopt;
     cmd_vel_pub_->publish(stop());
     controller_running_ = false;
-    time_out_ = false;
+    control_time_over_ = false;
     return rclcpp_action::CancelResponse::ACCEPT;
   }
 
@@ -116,6 +117,7 @@ public:
 
   void execute(const std::shared_ptr<GoalHandleNavigateToPose> goal_handle)
   {
+    Timerd time_out_timer;
     std::chrono::nanoseconds control_period(
       static_cast<int>(unit_cast<unit::time::s, unit::time::ns>(CONTROL_PERIOD)));
     rclcpp::Rate loop_rate(control_period);
@@ -123,14 +125,14 @@ public:
     auto feedback = std::make_shared<NavigateToPose::Feedback>();
     auto result = std::make_shared<NavigateToPose::Result>();
     controller_running_ = true;
-    while (rclcpp::ok()&&controller_running_) {
+    while (rclcpp::ok() && controller_running_) {
       if (control(feedback)) {
         goal_handle->succeed(result);
         RCLCPP_INFO(this->get_logger(), "Controler Goal succeeded");
         return;
       }
-      if (time_out_) {
-        time_out_ = false;
+      if (!control_time_over_) time_out_timer.start();
+      if (time_out_timer.elapsed() > TIME_OUT) {
         RCLCPP_INFO(this->get_logger(), "Controler Time out");
         return;
       }
@@ -198,9 +200,10 @@ public:
         cmd_vel.linear.x = v_xy.x;
         cmd_vel.linear.y = v_xy.y;
         cmd_vel.angular.z = v.z;
+        control_time_over_ = false;
       } else {
         RCLCPP_WARN(this->get_logger(), "control_time over opti_path.points.size()");
-        time_out_ = true;
+        control_time_over_ = true;
       }
       target_pose_.position.z = base_link_pose.position.z = 0.0;
       double target_dist = Vector3d::distance(target_pose_.position, base_link_pose.position);
@@ -260,7 +263,7 @@ public:
   }
 
 private:
-  bool time_out_ = false;
+  bool control_time_over_ = false;
   bool controller_running_ = false;
   // param
   std::string MAP_FRAME;
@@ -272,6 +275,7 @@ private:
   double GOAL_ANGLE_RANGE;
   double GOAL_MIN_VEL_RANGE;
   double GOAL_MIN_ANGULAR_RANGE;
+  double TIME_OUT;
   // tf
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener listener_;

@@ -17,12 +17,12 @@ mpc_path_planning_node:
       global_planning_period: 1.0 #[s]
       mpc:
         dt: 0.135 #[s]
-        horizon_time: 3.5
+        horizon_time: 4.0
         pos_error: 2.0 #[m] 0.8
         # ロボット制約
         forward_only: false
         min_vel: 0.0 #[m/s]  最小速度制限(0~)
-        max_vel: 1.0 #[m/s]
+        max_vel: 0.7 #[m/s]
         min_angular: 0.0 #[rad/s] 最小速度制限(0~)
         max_angular: 2.84 #[rad/s] 2.84
         max_acc: 4.9 #[m/s^s] 1.1 4.9 3.9 0.98 2.9
@@ -34,9 +34,9 @@ mpc_path_planning_node:
         weight:
           state: [0.5, 0.0, 2.0, 20.0, 20.0, 0.5] #ステートコストの重み [10.0, 0.0, 10.0, 800.0, 800.0, 10.0]
           final_state: [0.5, 0.0, 0.5, 50.0, 50.0, 30.0] #終端コストの重み     [10.0, 0.0, 10.0, 800.0, 800.0, 10.0]
-          ref_state: [0.0, 0.0, 0.0, 100.0, 100.0, 0.5] #初期経路(grid_path)とのエラーコストの重み
+          ref_state: [0.0, 0.0, 0.0, 80.0, 80.0, 0.5] #初期経路(grid_path)とのエラーコストの重み
           control: [10.0, 0.0, 20.0] #制御量コストの重み
-          diff_control: [15.0, 0.0, 30.0] #制御量変化コストの重み
+          diff_control: [20.0, 0.0, 50.0] #制御量変化コストの重み
         warm_start:
           latest_gpl_norm: 0.01 #[m] 最後に初期値計算を行った地点からlatest_gpl_norm[m]離れたら
           latest_target_norm: 0.001 #[m] 目標値がlatest_target_norm[m]以内(変わってない)とき
@@ -49,7 +49,7 @@ mpc_path_planning_node:
           compl_inf_tol: 0.001 #相補性条件の「許容」しきい値 def 0.0001
       obstacle_detect:
         dist: 5.0 #[m]
-        max_obstacle_size: 1.2 #[m]
+        max_obstacle_size: 1.0 #[m]
         min_obstacle_size: 0.7 #[m]
         list_size: 20
         nearby_obstacle_limit: 0.8 #[m]
@@ -63,7 +63,7 @@ global_path_planning_node:
       tf_frame:
         map_frame: "map"
         robot_frame: "base_link"
-      time_out: 2.0 #[s]
+      time_out: 3.0 #[s]
       extension_a_star:
         weight: 0.03
       dist_map:
@@ -84,6 +84,7 @@ control_node:
         map_frame: "map"
         robot_frame: "base_link"
       control_period: 0.001 #[s]
+      time_out: 10.0 #[s]
       goal:
         pos_range: 0.1 #[m] 0.05
         angle_range: 2.0 #[deg] 0.5
