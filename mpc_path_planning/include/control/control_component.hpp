@@ -104,6 +104,7 @@ public:
     opti_path_ = std::nullopt;
     cmd_vel_pub_->publish(stop());
     controller_running_ = false;
+    time_out_ = false;
     return rclcpp_action::CancelResponse::ACCEPT;
   }
 

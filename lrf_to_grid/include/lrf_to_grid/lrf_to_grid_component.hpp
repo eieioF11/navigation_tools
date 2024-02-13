@@ -162,6 +162,7 @@ private:
       Pose3d base_link_pose = make_pose(map_to_base_link.value().transform);
       gmap_.info.origin.position.x = base_link_pose.position.x - 0.5 * WIDTH;
       gmap_.info.origin.position.y = base_link_pose.position.y - 0.5 * HEIGHT;
+      gmap_.info.origin.position.z = base_link_pose.position.z;
       storage_map_.info.origin = gmap_.info.origin;
       // msg convert
       std::optional<sensor_msgs::msg::PointCloud2> trans_cloud =
