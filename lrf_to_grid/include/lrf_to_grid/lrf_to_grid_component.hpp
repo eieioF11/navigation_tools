@@ -71,8 +71,8 @@ public:
     // publisher
     map_pub_ =
       this->create_publisher<nav_msgs::msg::OccupancyGrid>(MAP_TOPIC, rclcpp::QoS(10).reliable());
-    storage_map_pub_ =
-        this->create_publisher<nav_msgs::msg::OccupancyGrid>(STORAGE_MAP_TOPIC, rclcpp::QoS(10).reliable());
+    storage_map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>(
+      STORAGE_MAP_TOPIC, rclcpp::QoS(10).reliable());
     debug_cloud_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
       "lrf_to_grid/debug_points", rclcpp::QoS(10));
     // subscriber
@@ -164,8 +164,14 @@ private:
       gmap_.info.origin.position.y = base_link_pose.position.y - 0.5 * HEIGHT;
       storage_map_.info.origin = gmap_.info.origin;
       // msg convert
+      std::optional<sensor_msgs::msg::PointCloud2> trans_cloud =
+        transform_pointcloud2(tf_buffer_, MAP_FRAME, get_cloud);
+      if (!trans_cloud) {
+        RCLCPP_ERROR(this->get_logger(), "transform error");
+        return;
+      }
       pcl::PointCloud<pcl::PointXYZ> cloud;
-      pcl::fromROSMsg(get_cloud, cloud);
+      pcl::fromROSMsg(trans_cloud.value(), cloud);
       if (cloud.empty()) {
         RCLCPP_WARN(this->get_logger(), "cloud empty");
         return;
@@ -174,30 +180,17 @@ private:
       std::vector<int> mapping;
       pcl::removeNaNFromPointCloud(cloud, cloud, mapping);
       cloud = voxelgrid_filter(cloud, VOXELGRID_SIZE, VOXELGRID_SIZE, VOXELGRID_SIZE);
-      pcl::PointCloud<pcl::PointXYZ> cut_cloud = passthrough_filter("z", cloud, Z_MIN, Z_MAX);
+      pcl::PointCloud<pcl::PointXYZ> cut_cloud = passthrough_filter(
+        "z", cloud, base_link_pose.position.z + Z_MIN, base_link_pose.position.z + Z_MAX);
 
-      std::optional<sensor_msgs::msg::PointCloud2> map_cloud_msg = transform_pointcloud2(
-        tf_buffer_, MAP_FRAME,
-        make_ros_pointcloud2(
-          make_header(get_cloud.header.frame_id, get_cloud.header.stamp), cut_cloud));
-      if (!map_cloud_msg) {
-        RCLCPP_ERROR(this->get_logger(), "transform error");
-        return;
-      }
-      debug_cloud_pub_->publish(map_cloud_msg.value());
-      // msg convert
-      pcl::PointCloud<pcl::PointXYZ> map_cloud;
-      pcl::fromROSMsg(map_cloud_msg.value(), map_cloud);
-      if (map_cloud.empty()) {
-        RCLCPP_WARN(this->get_logger(), "map_cloud empty");
-        return;
-      }
+      debug_cloud_pub_->publish(
+        make_ros_pointcloud2(make_header(MAP_FRAME, get_cloud.header.stamp), cut_cloud));
       // 初期化
 #pragma omp parallel for
       for (auto & cell : gmap_.data) cell = 0;
         // マップ作成
 #pragma omp parallel for
-      for (const auto point : map_cloud.points) {
+      for (const auto point : cut_cloud.points) {
         Vector2d p = gmap_.get_grid_pos(
           conversion_vector2<pcl::PointXYZ, Vector2d>(point));  // グリッド上の位置取得
         if (gmap_.is_contain(p))  // その点がgmap_.info.widthとgmap_.info.heightの範囲内かどうか
