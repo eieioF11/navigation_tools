@@ -79,7 +79,7 @@ control_node:
       topic_name:
         opti_path: "mpc_path_planning/opti_path"
         opti_twists: "mpc_path_planning/twists"
-        cmd_vel: "cmd_vel"
+        cmd_vel: "auto/cmd_vel"
       tf_frame:
         map_frame: "map"
         robot_frame: "base_link"

@@ -64,7 +64,7 @@ public:
       return;
     }
     RCLCPP_INFO(this->get_logger(), "path planner: %s", PATH_PLANNER.c_str());
-    planner_->set_timer([&]() { return rclcpp::Clock().now().seconds(); });
+    planner_->set_timer([&]() { return now().seconds(); });
     planner_->set_time_out(param<double>("global_path_planning.time_out", 2.0));
     // publisher
     global_path_pub_ =

@@ -46,7 +46,15 @@ def generate_launch_description():
             output="screen",
             parameters=[LaunchConfiguration('config')],
             respawn=True,
-        )
+        ),
+        # Node(
+        #     package='twist_switcher',
+        #     executable='twist_switcher',
+        #     namespace='',
+        #     output="screen",
+        #     parameters=[os.path.join(pkg_dir, "config", "twist_switcher_param.yaml")],
+        #     respawn=True,
+        # )
     ]
 
     return LaunchDescription(params + list)

@@ -139,6 +139,7 @@ public:
       goal_handle->publish_feedback(feedback);
       loop_rate.sleep();
     }
+    cmd_vel_pub_->publish(stop());
   }
 
   bool control(const NavigateToPose::Feedback::SharedPtr feedback)
@@ -252,8 +253,6 @@ public:
         cmd_vel_pub_->publish(stop());
       }
     }
-    // else
-    //   cmd_vel_pub_->publish(stop());
     linear_vel_pub_->publish(make_float32(vel));
     angular_vel_pub_->publish(make_float32(angular));
     perfomance_pub_->publish(make_float32(

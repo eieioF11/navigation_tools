@@ -166,8 +166,6 @@ public:
     controller_running_ = false;
     global_planner_running_ = false;
     end_ = false;
-    vel_error_.linear = {0.0, 0.0, 0.0};
-    vel_error_.angular = {0.0, 0.0, 0.0};
     obstacles_marker_.markers.resize(OBSTACLES_MAX_SIZE);
     planner_ = std::make_shared<MPCPathPlanner>(mpc_config_);
     // 追加の制約等設定
@@ -181,7 +179,7 @@ public:
     auto set_param_func = std::bind(&MPCPathPlanning::set_user_param, this, std::placeholders::_1);
     planner_->set_user_function(init_func, add_cost_func, add_const_func, set_param_func);
     // 最適化時間計測用
-    planner_->timer = [&]() { return now().seconds(); };
+    planner_->set_timer([&]() { return now().seconds(); });
     // モデル設定
 #if defined(NON_HOLONOMIC)
     planner_->set_kinematics_model(two_wheeled_model(mpc_config_), false);
@@ -267,9 +265,11 @@ public:
     // timer
     init_data_logger({"odom_vx", "odom_vy", "odom_w", "u_vx", "u_vy", "u_w"});
     // action serverの起動待機
-    while (!control_action_client_->wait_for_action_server() &&
-           !global_planning_action_client_->wait_for_action_server()) {
+    while ((!control_action_client_->wait_for_action_server() &&
+            !global_planning_action_client_->wait_for_action_server()) &&
+           rclcpp::ok()) {
       RCLCPP_INFO(get_logger(), "Waiting for action server...");
+      rclcpp::sleep_for(500ms);
     }
   };
 
@@ -379,7 +379,6 @@ public:
 #if defined(PLANNING_DEBUG_OUTPUT)
         std::cout << "----------------------------------------------------------" << std::endl;
         std::cout << "now_vel:" << now_vel_ << std::endl;
-        std::cout << "vel_error_:" << vel_error_ << std::endl;
         std::cout << "end:" << target_pose_.value() << std::endl;
         std::cout << "start:" << base_link_pose << std::endl;
         std::cout << "end:" << target_pose_.value() << std::endl;
@@ -530,7 +529,6 @@ private:
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr obstacles_pub_;
   // twist
   Twistd now_vel_;
-  Twistd vel_error_;
   // pose
   std::optional<Pose3d> target_pose_;
   // planner
