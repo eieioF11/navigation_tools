@@ -538,14 +538,14 @@ private:
   std::optional<Pathd> global_path_;
   std::shared_ptr<MPCPathPlanner> planner_;
 
-  void publish_target(const Pose3d &base_link_pose)
+  void publish_target(const Pose3d & base_link_pose)
   {
     static Timerd debug_timer;
     if (debug_timer.cyclic(1.0)) {
       geometry_msgs::msg::PoseStamped target_msg;
       target_msg.header = make_header(MAP_FRAME, rclcpp::Clock().now());
       target_msg.pose = make_geometry_pose(target_pose_.value());
-      target_msg.pose.position.z =  base_link_pose.position.z;
+      target_msg.pose.position.z = base_link_pose.position.z;
       target_pub_->publish(target_msg);
     }
   }
@@ -580,9 +580,10 @@ private:
         obstacle_t obstacle = obstacles_.top();
         if (i != 0) {
           Vector2d diff = pre_obs.pos - obstacle.pos;
-          if (
-            std::abs(diff.x) >= (NEARBY_OBSTACLE_LIMIT * obstacle_size_.x) ||
-            std::abs(diff.y) >= (NEARBY_OBSTACLE_LIMIT * obstacle_size_.y))
+          // if (
+          //   std::abs(diff.x) >= (NEARBY_OBSTACLE_LIMIT * obstacle_size_.x) ||
+          //   std::abs(diff.y) >= (NEARBY_OBSTACLE_LIMIT * obstacle_size_.y))
+          if (diff.norm() >= (NEARBY_OBSTACLE_LIMIT * obstacle_size_.z))
             obs_p = obstacle.pos;
           else {
             i--;

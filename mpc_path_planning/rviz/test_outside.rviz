@@ -394,7 +394,7 @@ Visualization Manager:
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /goal_pose
+        Value: /mpc_path_planning/target
       Value: true
     - Class: jsk_rviz_plugin/TargetVisualizer
       Enabled: true
@@ -404,7 +404,7 @@ Visualization Manager:
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /goal_pose
+        Value: /mpc_path_planning/target
       Value: true
       alpha: 1
       color: 25; 255; 240
@@ -745,7 +745,7 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 73.53606414794922
+      Scale: 110.04273986816406
       Target Frame: base_link
       Value: TopDownOrtho (rviz_default_plugins)
       X: 0
