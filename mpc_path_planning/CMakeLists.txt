@@ -7,6 +7,9 @@ extension_ament_init()
 
 add_compile_options(-O3)
 
+# For profiling with gprof
+add_compile_options(-pg)
+
 extension_ament_create_node(${PROJECT_NAME}_component
   NODE_NAME ${PROJECT_NAME}
   NODE_PLUGIN "MPCPathPlanning"
