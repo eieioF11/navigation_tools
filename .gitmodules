@@ -1,0 +1,6 @@
+[submodule "twist_switcher"]
+	path = twist_switcher
+	url = https://github.com/eieioF11/twist_switcher.git
+[submodule "manual_controller"]
+	path = manual_controller
+	url = https://github.com/eieioF11/manual_controller.git
