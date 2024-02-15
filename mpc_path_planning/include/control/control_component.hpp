@@ -60,7 +60,10 @@ public:
       [&](const nav_msgs::msg::Path::SharedPtr msg) { opti_path_ = *msg; });
     opti_twists_sub_ = this->create_subscription<extension_msgs::msg::TwistMultiArray>(
       OPTITWISTS_TOPIC, rclcpp::QoS(10),
-      [&](extension_msgs::msg::TwistMultiArray::SharedPtr msg) { opti_twists_ = *msg; });
+      [&](extension_msgs::msg::TwistMultiArray::SharedPtr msg) {
+        opti_twists_ = *msg;
+        opti_twists_.value().header.stamp = this->get_clock()->now();
+        });
     odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
       ODOM_TOPIC, rclcpp::QoS(10),
       [&](nav_msgs::msg::Odometry::SharedPtr msg) { odom_vel_ = make_twist(*msg); });
