@@ -18,6 +18,7 @@
 #include <nav2_msgs/action/navigate_to_pose.hpp>
 #include <nav_msgs/msg/path.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
+#include <rosgraph_msgs/msg/clock.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
@@ -25,7 +26,6 @@
 #include <sensor_msgs/point_cloud_conversion.hpp>
 #include <std_msgs/msg/empty.hpp>
 #include <std_srvs/srv/set_bool.hpp>
-#include <rosgraph_msgs/msg/clock.hpp>
 // common_lib
 #define USE_OMP
 #include "common_lib/common_lib.hpp"
@@ -391,13 +391,13 @@ public:
   void path_planning(const NavigateToPose::Feedback::SharedPtr feedback)
   {
     if (!tf_buffer_.canTransform(
-          ROBOT_FRAME, MAP_FRAME, rclcpp::Time(0),
+          ROBOT_FRAME, MAP_FRAME, get_now(),
           tf2::durationFromSec(1.0))) {  // 変換無いよ
       RCLCPP_WARN(
         this->get_logger(), "%s %s can not Transform", MAP_FRAME.c_str(), ROBOT_FRAME.c_str());
       return;
     }
-    auto map_to_base_link = lookup_transform(tf_buffer_, ROBOT_FRAME, MAP_FRAME);
+    auto map_to_base_link = lookup_transform(tf_buffer_, ROBOT_FRAME, MAP_FRAME, get_now());
     if (map_to_base_link) {
       Pose3d base_link_pose = make_pose(map_to_base_link.value().transform);
       obstacles_detect(base_link_pose);
@@ -520,6 +520,7 @@ private:
   bool planner_running_;
   bool global_planner_running_;
   bool time_sync_;
+  bool get_clock_;
   // param
   std::string MAP_FRAME;
   std::string ROBOT_FRAME;
@@ -533,10 +534,15 @@ private:
   double MIN_OBSTACLE_SIZE;
   double NEARBY_OBSTACLE_LIMIT;
   //timer
-  rclcpp::Time control_clock_;
+  std::optional<rclcpp::Time> control_clock_;
   rclcpp::Time get_now()
   {
-    if (time_sync_) return control_clock_;
+    if (time_sync_) {
+      if (control_clock_)
+        return control_clock_.value();
+      else
+        RCLCPP_WARN(this->get_logger(), "control_clock is not set");
+    }
     return now();
   }
   // tf
