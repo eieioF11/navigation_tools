@@ -24,6 +24,7 @@
 #include <sensor_msgs/msg/point_cloud.hpp>
 #include <sensor_msgs/point_cloud_conversion.hpp>
 #include <std_msgs/msg/empty.hpp>
+#include <std_srvs/srv/set_bool.hpp>
 // common_lib
 #define USE_OMP
 #include "common_lib/common_lib.hpp"
@@ -262,7 +263,27 @@ public:
       rclcpp_action::create_client<NavigateToPose>(this, "mpc_path_planning/global_planning");
     planning_action_client_ =
       rclcpp_action::create_client<NavigateToPose>(this, "navigate_to_pose");
-    // timer
+    // service
+    reset_srv_ = this->create_service<std_srvs::srv::SetBool>(
+      "mpc_path_planning/reset", [&](
+                                   const std_srvs::srv::SetBool::Request::SharedPtr req,
+                                   const std_srvs::srv::SetBool::Response::SharedPtr res) {
+        end_ = req->data;
+        res->success = true;
+        res->message = end_ ? "mpc_path_planning reset!" : " ";
+        if (req->data) {
+          target_pose_ = std::nullopt;
+          global_path_ = std::nullopt;
+          controller_running_ = false;
+          global_planner_running_ = false;
+          planner_running_ = false;
+          planner_->reset();
+          control_action_client_->async_cancel_all_goals();
+          global_planning_action_client_->async_cancel_all_goals();
+          RCLCPP_INFO(get_logger(), "mpc_path_planning reset!");
+        }
+      });
+    // logger
     init_data_logger({"odom_vx", "odom_vy", "odom_w", "u_vx", "u_vy", "u_w"});
     // action serverの起動待機
     while ((!control_action_client_->wait_for_action_server() &&
@@ -527,6 +548,8 @@ private:
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr perfomance_pub_;
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr perfomance_ave_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr obstacles_pub_;
+  // service
+  rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr reset_srv_;
   // twist
   Twistd now_vel_;
   // pose
