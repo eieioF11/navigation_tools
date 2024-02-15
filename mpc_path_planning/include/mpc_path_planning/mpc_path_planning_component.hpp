@@ -25,6 +25,7 @@
 #include <sensor_msgs/point_cloud_conversion.hpp>
 #include <std_msgs/msg/empty.hpp>
 #include <std_srvs/srv/set_bool.hpp>
+#include <rosgraph_msgs/msg/clock.hpp>
 // common_lib
 #define USE_OMP
 #include "common_lib/common_lib.hpp"
@@ -91,6 +92,7 @@ public:
     // setup
     PLANNING_PERIOD = param<double>("mpc_path_planning.planning_period", 0.001);
     GLOBAL_PLANNING_PERIOD = param<double>("mpc_path_planning.global_planning_period", 0.001);
+    time_sync_ = param<bool>("mpc_path_planning.time_sync", false);
     // mpc
     mpc_config_.dt = param<double>("mpc_path_planning.mpc.dt", 0.06);
     double HORIZON_TIME = param<double>("mpc_path_planning.mpc.horizon_time", 7.0);
@@ -250,6 +252,11 @@ public:
           now_vel_.linear.x, now_vel_.linear.y, now_vel_.angular.z, msg->linear.x, msg->linear.y,
           msg->angular.z);
       });
+    if (time_sync_) {
+      clock_sub_ = this->create_subscription<rosgraph_msgs::msg::Clock>(
+        "mpc_path_planning/clock", rclcpp::QoS(10),
+        [&](const rosgraph_msgs::msg::Clock::SharedPtr msg) { control_clock_ = msg->clock; });
+    }
     // action server
     using namespace std::placeholders;
     action_server_ = rclcpp_action::create_server<NavigateToPose>(
@@ -411,12 +418,11 @@ public:
         Pathd opti_path = planner_->path_planning(start, end);
         Pathd init_path = planner_->get_init_path();
         // publish grid path
-        init_path_pub_->publish(
-          make_nav_path(make_header(MAP_FRAME, rclcpp::Clock().now()), init_path));
+        init_path_pub_->publish(make_nav_path(make_header(MAP_FRAME, get_now()), init_path));
         if (planner_->optimization()) {  // 最適化成功
           // publish opti path
           auto [o_ppath, o_vpath, o_apath] =
-            make_msg_paths(make_header(MAP_FRAME, rclcpp::Clock().now()), opti_path);
+            make_msg_paths(make_header(MAP_FRAME, get_now()), opti_path);
           mpc_dt_pub_->publish(make_float32(mpc_config_.dt));
           opti_path_pub_->publish(o_ppath);
           opti_twists_pub_->publish(o_vpath);
@@ -446,7 +452,7 @@ public:
     using namespace std::placeholders;
     global_path_ = std::nullopt;
     auto goal_msg = NavigateToPose::Goal();
-    goal_msg.pose.header = make_header(MAP_FRAME, rclcpp::Clock().now());
+    goal_msg.pose.header = make_header(MAP_FRAME, get_now());
     goal_msg.pose.pose = make_geometry_pose(target_pose);
     // 進捗状況を表示するFeedbackコールバックを設定
     auto send_goal_options = rclcpp_action::Client<NavigateToPose>::SendGoalOptions();
@@ -489,7 +495,7 @@ public:
     global_path_ = std::nullopt;
     global_planner_running_ = true;
     auto goal_msg = NavigateToPose::Goal();
-    goal_msg.pose.header = make_header(MAP_FRAME, rclcpp::Clock().now());
+    goal_msg.pose.header = make_header(MAP_FRAME, get_now());
     goal_msg.pose.pose = make_geometry_pose(target_pose);
     // 進捗状況を表示するFeedbackコールバックを設定
     auto send_goal_options = rclcpp_action::Client<NavigateToPose>::SendGoalOptions();
@@ -513,6 +519,7 @@ private:
   bool controller_running_;
   bool planner_running_;
   bool global_planner_running_;
+  bool time_sync_;
   // param
   std::string MAP_FRAME;
   std::string ROBOT_FRAME;
@@ -525,6 +532,13 @@ private:
   double MAX_OBSTACLE_SIZE;
   double MIN_OBSTACLE_SIZE;
   double NEARBY_OBSTACLE_LIMIT;
+  //timer
+  rclcpp::Time control_clock_;
+  rclcpp::Time get_now()
+  {
+    if (time_sync_) return control_clock_;
+    return now();
+  }
   // tf
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener listener_;
@@ -534,6 +548,7 @@ private:
   rclcpp_action::Client<NavigateToPose>::SharedPtr global_planning_action_client_;
   rclcpp_action::Client<NavigateToPose>::SharedPtr planning_action_client_;
   // subscriber
+  rclcpp::Subscription<rosgraph_msgs::msg::Clock>::SharedPtr clock_sub_;
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr goal_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
@@ -564,7 +579,7 @@ private:
     static Timerd debug_timer;
     if (debug_timer.cyclic(1.0)) {
       geometry_msgs::msg::PoseStamped target_msg;
-      target_msg.header = make_header(MAP_FRAME, rclcpp::Clock().now());
+      target_msg.header = make_header(MAP_FRAME, get_now());
       target_msg.pose = make_geometry_pose(target_pose_.value());
       target_msg.pose.position.z = base_link_pose.position.z;
       target_pub_->publish(target_msg);
@@ -618,8 +633,8 @@ private:
       }
       set_value(dm_obs, obs_p);
       dm_obstacles(Sl(), i) = dm_obs;
-      obstacles_marker_.markers.at(i) = make_circle_maker(
-        make_header(MAP_FRAME, rclcpp::Clock().now()), obs_p, i, color, obstacle_size_);
+      obstacles_marker_.markers.at(i) =
+        make_circle_maker(make_header(MAP_FRAME, get_now()), obs_p, i, color, obstacle_size_);
     }
     return std::make_pair(dm_obstacles, dm_obstacles_size);
   }
@@ -627,7 +642,7 @@ private:
   void obstacles_detect(Pose3d robot_pose)
   {
     if (map_) {
-      auto start = rclcpp::Clock().now();
+      auto start = get_now();
       Vector2d robot = {robot_pose.position.x, robot_pose.position.y};
       clear_obstacles();
       // 探索範囲計算
@@ -681,8 +696,7 @@ private:
 
 #if defined(OBSTACLE_DETECT_DEBUG_OUTPUT)
       std::cout << "obstacles size:" << obstacles_.size() << std::endl;
-      std::cout << "obstacles detect time:" << (rclcpp::Clock().now() - start).seconds()
-                << std::endl;
+      std::cout << "obstacles detect time:" << (get_now() - start).seconds() << std::endl;
 #endif
     }
   }

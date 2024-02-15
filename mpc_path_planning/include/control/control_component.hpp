@@ -31,6 +31,7 @@ public:
     // setup
     CONTROL_PERIOD = param<double>("control.control_period", 0.001);
     TIME_OUT = param<double>("control.time_out", 10.0);
+    time_sync_ = param<bool>("control.time_sync", false);
     // 収束判定
     GOAL_POS_RANGE = param<double>("control.goal.pos_range", 0.01);
     GOAL_ANGLE_RANGE = unit_cast<unit::angle::rad>(param<double>("control.goal.angle_range", 0.1));
@@ -62,7 +63,7 @@ public:
       OPTITWISTS_TOPIC, rclcpp::QoS(10),
       [&](extension_msgs::msg::TwistMultiArray::SharedPtr msg) {
         opti_twists_ = *msg;
-        opti_twists_.value().header.stamp = this->get_clock()->now();
+        // opti_twists_.value().header.stamp = this->get_clock()->now();
         });
     odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
       ODOM_TOPIC, rclcpp::QoS(10),
@@ -85,6 +86,15 @@ public:
     init_data_logger(
       {"u_vx", "u_vy", "u_w", "odom_vx", "odom_vy", "odom_w", "t_x", "t_y", "t_theta", "x", "y",
        "theta"});
+    if(time_sync_)
+    {
+      clock_pub_ = this->create_publisher<rosgraph_msgs::msg::Clock>("mpc_path_planning/clock", rclcpp::QoS(10));
+      timer_ = this->create_wall_timer(1ns, [&]() {
+        rosgraph_msgs::msg::Clock clock_msg;
+        clock_msg.clock = this->get_clock()->now();
+        clock_pub_->publish(clock_msg);
+      });
+    }
   }
 
   rclcpp_action::GoalResponse handle_goal(
@@ -267,6 +277,7 @@ public:
 private:
   bool control_time_over_ = false;
   bool controller_running_ = false;
+  bool time_sync_ = false;
   // param
   std::string MAP_FRAME;
   std::string ROBOT_FRAME;
@@ -283,6 +294,7 @@ private:
   tf2_ros::TransformListener listener_;
   // timer
   rclcpp::Time pre_control_time_;
+  rclcpp::TimerBase::SharedPtr timer_;
   // action
   rclcpp_action::Server<NavigateToPose>::SharedPtr action_server_;
   // subscriber
@@ -291,6 +303,7 @@ private:
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
   rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr mpc_dt_sub_;
   // publisher
+  rclcpp::Publisher<rosgraph_msgs::msg::Clock>::SharedPtr clock_pub_;
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_pub_;
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr linear_vel_pub_;
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr angular_vel_pub_;

@@ -14,6 +14,7 @@ mpc_path_planning_node:
         robot_frame: "base_link"
       planning_period: 0.001 #[s]
       global_planning_period: 0.5 #[s]
+      time_sync: false
       mpc:
         dt:             0.07 #[s] 0.135
         horizon_time:    5.0
@@ -82,6 +83,7 @@ control_node:
         robot_frame: "base_link"
       control_period: 0.001 #[s]
       time_out: 10.0 #[s]
+      time_sync: false
       goal:
         pos_range:         0.25   #[m] 0.05
         angle_range:       6.0   #[deg] 0.5
