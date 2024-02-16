@@ -14,10 +14,10 @@ public:
     const std::string & name_space = "",
     const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
   : ExtensionNode("control_node", name_space, options),
-    tf_buffer_(this->get_clock()),
+    tf_buffer_(get_clock()),
     listener_(tf_buffer_)
   {
-    RCLCPP_INFO(this->get_logger(), "start control_node");
+    RCLCPP_INFO(get_logger(), "start control_node");
     // get param
     std::string OPTIPATH_TOPIC =
       param<std::string>("control.topic_name.opti_path", "mpc_path_planning/opti_path");
@@ -38,42 +38,42 @@ public:
     GOAL_MIN_VEL_RANGE = param<double>("control.goal.min_vel_range", 0.001);
     GOAL_MIN_ANGULAR_RANGE = param<double>("control.goal.min_angular_range", 0.001);
     // init
-    RCLCPP_INFO(this->get_logger(), "Initialization !");
+    RCLCPP_INFO(get_logger(), "Initialization !");
     opti_twists_ = std::nullopt;
     opti_path_ = std::nullopt;
     MPC_DT = 0.1;
     inv_MPC_DT = 1.0 / MPC_DT;
-    pre_control_time_ = this->get_clock()->now();
+    pre_control_time_ = get_clock()->now();
     // publisher
     cmd_vel_pub_ =
-      this->create_publisher<geometry_msgs::msg::Twist>(CMD_VEL_TOPIC, rclcpp::QoS(10));
-    linear_vel_pub_ = this->create_publisher<std_msgs::msg::Float32>(
+      create_publisher<geometry_msgs::msg::Twist>(CMD_VEL_TOPIC, rclcpp::QoS(10));
+    linear_vel_pub_ = create_publisher<std_msgs::msg::Float32>(
       "mpc_path_planning/linear_vel", rclcpp::QoS(5));
-    angular_vel_pub_ = this->create_publisher<std_msgs::msg::Float32>(
+    angular_vel_pub_ = create_publisher<std_msgs::msg::Float32>(
       "mpc_path_planning/angular_vel", rclcpp::QoS(5));
-    perfomance_pub_ = this->create_publisher<std_msgs::msg::Float32>(
+    perfomance_pub_ = create_publisher<std_msgs::msg::Float32>(
       "mpc_path_planning/control_period", rclcpp::QoS(5));
-    control_time_pub_ = this->create_publisher<std_msgs::msg::Float32>(
+    control_time_pub_ = create_publisher<std_msgs::msg::Float32>(
       "mpc_path_planning/control_time", rclcpp::QoS(5));
     cmd_vel_pub_->publish(stop());
-    opti_path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
+    opti_path_sub_ = create_subscription<nav_msgs::msg::Path>(
       OPTIPATH_TOPIC, rclcpp::QoS(10).reliable(),
       [&](const nav_msgs::msg::Path::SharedPtr msg) { opti_path_ = *msg; });
-    opti_twists_sub_ = this->create_subscription<extension_msgs::msg::TwistMultiArray>(
+    opti_twists_sub_ = create_subscription<extension_msgs::msg::TwistMultiArray>(
       OPTITWISTS_TOPIC, rclcpp::QoS(10),
       [&](extension_msgs::msg::TwistMultiArray::SharedPtr msg) {
         opti_twists_ = *msg;
-        // opti_twists_.value().header.stamp = this->get_clock()->now();
+        // opti_twists_.value().header.stamp = get_clock()->now();
         });
-    odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
+    odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
       ODOM_TOPIC, rclcpp::QoS(10),
       [&](nav_msgs::msg::Odometry::SharedPtr msg) { odom_vel_ = make_twist(*msg); });
-    mpc_dt_sub_ = this->create_subscription<std_msgs::msg::Float32>(
+    mpc_dt_sub_ = create_subscription<std_msgs::msg::Float32>(
       "mpc_path_planning/dt", rclcpp::QoS(10).reliable(),
       [&](std_msgs::msg::Float32::SharedPtr msg) {
         MPC_DT = msg->data;
         if (approx_zero(MPC_DT)) {
-          RCLCPP_ERROR(this->get_logger(), "MPC_DT is 0.0");
+          RCLCPP_ERROR(get_logger(), "MPC_DT is 0.0");
           return;
         }
         inv_MPC_DT = 1.0 / MPC_DT;
@@ -88,10 +88,10 @@ public:
        "theta"});
     if(time_sync_)
     {
-      clock_pub_ = this->create_publisher<rosgraph_msgs::msg::Clock>("mpc_path_planning/clock", rclcpp::QoS(10));
-      timer_ = this->create_wall_timer(1ns, [&]() {
+      clock_pub_ = create_publisher<rosgraph_msgs::msg::Clock>("mpc_path_planning/clock", rclcpp::QoS(10));
+      timer_ = create_wall_timer(1ns, [&]() {
         rosgraph_msgs::msg::Clock clock_msg;
-        clock_msg.clock = this->get_clock()->now();
+        clock_msg.clock = get_clock()->now();
         clock_pub_->publish(clock_msg);
       });
     }
@@ -100,7 +100,7 @@ public:
   rclcpp_action::GoalResponse handle_goal(
     const rclcpp_action::GoalUUID & uuid, std::shared_ptr<const NavigateToPose::Goal> goal)
   {
-    RCLCPP_INFO(this->get_logger(), "Controler Received goal request");
+    RCLCPP_INFO(get_logger(), "Controler Received goal request");
     target_pose_ = make_pose(goal->pose.pose);
     std::cout << "goal:" << target_pose_ << std::endl;
     control_time_over_ = false;
@@ -112,7 +112,7 @@ public:
   rclcpp_action::CancelResponse handle_cancel(
     const std::shared_ptr<GoalHandleNavigateToPose> goal_handle)
   {
-    RCLCPP_INFO(this->get_logger(), "Controler Received request to cancel goal");
+    RCLCPP_INFO(get_logger(), "Controler Received request to cancel goal");
     (void)goal_handle;
     opti_twists_ = std::nullopt;
     opti_path_ = std::nullopt;
@@ -141,12 +141,12 @@ public:
     while (rclcpp::ok() && controller_running_) {
       if (control(feedback)) {
         goal_handle->succeed(result);
-        RCLCPP_INFO(this->get_logger(), "Controler Goal succeeded");
+        RCLCPP_INFO(get_logger(), "Controler Goal succeeded");
         return;
       }
       if (!control_time_over_) time_out_timer.start();
       if (time_out_timer.elapsed() > TIME_OUT) {
-        RCLCPP_INFO(this->get_logger(), "Controler Time out");
+        RCLCPP_INFO(get_logger(), "Controler Time out");
         return;
       }
       goal_handle->publish_feedback(feedback);
@@ -161,17 +161,17 @@ public:
           ROBOT_FRAME, MAP_FRAME, rclcpp::Time(0),
           tf2::durationFromSec(1.0))) {  // 変換無いよ
       RCLCPP_WARN(
-        this->get_logger(), "%s %s can not Transform", MAP_FRAME.c_str(), ROBOT_FRAME.c_str());
+        get_logger(), "%s %s can not Transform", MAP_FRAME.c_str(), ROBOT_FRAME.c_str());
       return true;
     }
     auto map_to_base_link = lookup_transform(tf_buffer_, ROBOT_FRAME, MAP_FRAME);
-    auto now_time = this->get_clock()->now();
+    auto now_time = get_clock()->now();
     double vel = 0.;
     double angular = 0.;
     if (map_to_base_link && opti_path_ && opti_twists_) {
       Pathd opti_path = make_path(opti_path_.value(), opti_twists_.value());
       Pose3d base_link_pose = make_pose(map_to_base_link.value().transform);
-      RCLCPP_INFO_CHANGE(0, this->get_logger(), "get opti_path");
+      RCLCPP_INFO_CHANGE(0, get_logger(), "get opti_path");
 #if defined(CONTROL_DEBUG_OUTPUT)
       std::cout << "----------------------------------------------------------" << std::endl;
       std::cout << "mpc_dt:" << MPC_DT << std::endl;
@@ -216,7 +216,7 @@ public:
         cmd_vel.angular.z = v.z;
         control_time_over_ = false;
       } else {
-        RCLCPP_WARN(this->get_logger(), "control_time over opti_path.points.size()");
+        RCLCPP_WARN(get_logger(), "control_time over opti_path.points.size()");
         control_time_over_ = true;
       }
       target_pose_.position.z = base_link_pose.position.z = 0.0;
@@ -244,7 +244,7 @@ public:
         if (target_diff_angle < GOAL_ANGLE_RANGE) {
           if (
             approx_zero(vel, GOAL_MIN_VEL_RANGE) && approx_zero(angular, GOAL_MIN_ANGULAR_RANGE)) {
-            RCLCPP_INFO(this->get_logger(), "goal !");
+            RCLCPP_INFO(get_logger(), "goal !");
             opti_twists_ = std::nullopt;
             opti_path_ = std::nullopt;
             cmd_vel_pub_->publish(stop());
@@ -261,7 +261,7 @@ public:
         !cmd_vel.angular.has_nan())
         cmd_vel_pub_->publish(make_geometry_twist(cmd_vel));
       else {
-        RCLCPP_WARN(this->get_logger(), "error cmd_vel inf or nan !");
+        RCLCPP_WARN(get_logger(), "error cmd_vel inf or nan !");
         std::cout << "cmd_vel:" << cmd_vel << std::endl;
         cmd_vel_pub_->publish(stop());
       }
@@ -270,7 +270,7 @@ public:
     angular_vel_pub_->publish(make_float32(angular));
     perfomance_pub_->publish(make_float32(
       unit_cast<unit::time::s, unit::time::ms>((now_time - pre_control_time_).seconds())));
-    pre_control_time_ = this->get_clock()->now();
+    pre_control_time_ = get_clock()->now();
     return false;
   }
 

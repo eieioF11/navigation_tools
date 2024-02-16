@@ -29,10 +29,10 @@ public:
     const std::string & name_space = "",
     const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
   : ExtensionNode("global_path_planning_node", name_space, options),
-    tf_buffer_(this->get_clock()),
+    tf_buffer_(get_clock()),
     listener_(tf_buffer_)
   {
-    RCLCPP_INFO(this->get_logger(), "start global_path_planning_node");
+    RCLCPP_INFO(get_logger(), "start global_path_planning_node");
     // get param
     std::string MAP_TOPIC = param<std::string>("global_path_planning.topic_name.map", "/map");
     std::string GLOBALPATH_TOPIC = param<std::string>(
@@ -60,21 +60,21 @@ public:
     else if (PATH_PLANNER.compare("dijkstra_dist_map") == 0)
       planner_ = std::make_shared<Dijkstra>(true);
     else {
-      RCLCPP_ERROR(this->get_logger(), "Nonexistent path planner algorithm");
+      RCLCPP_ERROR(get_logger(), "Nonexistent path planner algorithm");
       return;
     }
-    RCLCPP_INFO(this->get_logger(), "path planner: %s", PATH_PLANNER.c_str());
+    RCLCPP_INFO(get_logger(), "path planner: %s", PATH_PLANNER.c_str());
     planner_->set_timer([&]() { return now().seconds(); });
     planner_->set_time_out(param<double>("global_path_planning.time_out", 2.0));
     // publisher
     global_path_pub_ =
-      this->create_publisher<nav_msgs::msg::Path>(GLOBALPATH_TOPIC, rclcpp::QoS(10).reliable());
+      create_publisher<nav_msgs::msg::Path>(GLOBALPATH_TOPIC, rclcpp::QoS(10).reliable());
     gpp_perfomance_pub_ =
-      this->create_publisher<std_msgs::msg::Float32>("global_path_planning/time", rclcpp::QoS(5));
-    dist_map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>(
+      create_publisher<std_msgs::msg::Float32>("global_path_planning/time", rclcpp::QoS(5));
+    dist_map_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
       "global_path_planning/dist_map", rclcpp::QoS(10).reliable());
     // subscriber
-    map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
+    map_sub_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
       MAP_TOPIC, rclcpp::QoS(10).reliable(),
       [&](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
         map_msg_ = msg;
@@ -92,7 +92,7 @@ public:
   rclcpp_action::GoalResponse handle_goal(
     const rclcpp_action::GoalUUID & uuid, std::shared_ptr<const NavigateToPose::Goal> goal)
   {
-    RCLCPP_INFO(this->get_logger(), "global_path_planner Received goal request");
+    RCLCPP_INFO(get_logger(), "global_path_planner Received goal request");
     target_pose_ = make_pose(goal->pose.pose);
     std::cout << "goal:" << target_pose_.value() << std::endl;
     (void)uuid;
@@ -102,7 +102,7 @@ public:
   rclcpp_action::CancelResponse handle_cancel(
     const std::shared_ptr<GoalHandleNavigateToPose> goal_handle)
   {
-    RCLCPP_INFO(this->get_logger(), "global_path_planner Received request to cancel goal");
+    RCLCPP_INFO(get_logger(), "global_path_planner Received request to cancel goal");
     target_pose_ = std::nullopt;
     (void)goal_handle;
     return rclcpp_action::CancelResponse::ACCEPT;
@@ -116,10 +116,11 @@ public:
     if (path_planning(feedback)) {
       target_pose_ = std::nullopt;
       goal_handle->succeed(result);
-      RCLCPP_INFO(this->get_logger(), "Global Path Generation Success");
+      RCLCPP_INFO(get_logger(), "Global Path Generation Success");
       return;
     }
-    // goal_handle->canceled(result);
+    goal_handle->abort(result);
+    RCLCPP_WARN(get_logger(), "Global Path Planner aborted");
   }
 
   bool path_planning(const NavigateToPose::Feedback::SharedPtr feedback)
@@ -128,24 +129,26 @@ public:
           MAP_FRAME, ROBOT_FRAME, rclcpp::Time(0),
           tf2::durationFromSec(1.0))) {  // 変換無いよ
       RCLCPP_WARN(
-        this->get_logger(), "%s %s can not Transform", MAP_FRAME.c_str(), ROBOT_FRAME.c_str());
+        get_logger(), "%s %s can not Transform", MAP_FRAME.c_str(), ROBOT_FRAME.c_str());
       return false;
     }
     auto map_to_base_link = lookup_transform(tf_buffer_, ROBOT_FRAME, MAP_FRAME);
     if (map_to_base_link) {
       base_link_pose_ = make_pose(map_to_base_link.value().transform);
-      RCLCPP_INFO_CHANGE(0, this->get_logger(), "get base_link pose");
+      RCLCPP_INFO_CHANGE(0, get_logger(), "get base_link pose");
       if (map_msg_) {
         planner_->set_map(make_gridmap(dist_map_msg_));
-        RCLCPP_INFO_CHANGE(1, this->get_logger(), "get map");
+        RCLCPP_INFO_CHANGE(1, get_logger(), "get map");
         if (target_pose_) {
+          if (!check_pos(base_link_pose_)||!check_pos(target_pose_.value()))
+            return false;
           PathPointd start = make_pathpoint<double>(base_link_pose_);
           PathPointd end = make_pathpoint<double>(target_pose_.value());
           start_planning_timer_ = rclcpp::Clock().now();
           Pathd grid_path = planner_->path_planning(start, end);
           if (planner_->time_out()) {
-            RCLCPP_WARN(this->get_logger(), "path planning time out");
-            return false;
+            RCLCPP_WARN(get_logger(), "path planning time out");
+            // return false;
           }
           global_path_pub_->publish(
             make_nav_path(make_header(MAP_FRAME, rclcpp::Clock().now()), grid_path));
@@ -189,6 +192,18 @@ private:
   nav_msgs::msg::OccupancyGrid dist_map_msg_;
   // planner
   std::shared_ptr<GridPathPlanner> planner_;
+
+  bool check_pos(const Pose3d & target_pose)
+  {
+    GridMap map = make_gridmap(dist_map_msg_);
+    Vector2d target = target_pose.position.to_vector2();
+    Vector2d target_cell = map.get_grid_pos(target);
+    if (map.is_wall(target_cell)) {
+      RCLCPP_WARN(get_logger(), "this pos is wall");
+      return false;
+    }
+    return true;
+  }
 
   void calc_distance_map()
   {
