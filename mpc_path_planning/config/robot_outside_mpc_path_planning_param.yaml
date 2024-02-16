@@ -51,8 +51,8 @@ mpc_path_planning_node:
           compl_inf_tol: 0.001 #相補性条件の「許容」しきい値 def 0.0001
       obstacle_detect:
         dist: 5.0 #[m]
-        max_obstacle_size: 1.0 #[m]
-        min_obstacle_size: 0.5 #[m]
+        max_obstacle_size: 1.2 #[m]
+        min_obstacle_size: 0.7 #[m]
         list_size: 20
         nearby_obstacle_limit: 0.7 #[m]
 
@@ -60,7 +60,7 @@ global_path_planning_node:
   ros__parameters:
     global_path_planning:
       topic_name:
-        map: "/lrf/map"
+        map: "/lrf/storage_map"
         global_path: "global_path_planning/path"
       tf_frame:
         map_frame: "map"
@@ -68,8 +68,8 @@ global_path_planning_node:
       dist_map:
         threshold: 30 #(0~255)距離場の値がthreshold[pixel]より小さい値のみ使用する、大きい値は255
         # map[x,y] = GridMap::WALL_VALUE*exp(img[x,y]+alpha)+beta ※img[x,y]:0~1の値で1が障害物
-        alpha: -0.2
-        beta: -1.0
+        alpha: 0.3
+        beta: -2.5
       path_planner: "extension_a_star" #dijkstra,dijkstra_dist_map,a_star,extension_a_star,wave_propagation,wave_propagation_dist_map
 
 control_node:

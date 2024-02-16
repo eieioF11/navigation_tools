@@ -140,7 +140,8 @@ public:
         planner_->set_map(make_gridmap(dist_map_msg_));
         RCLCPP_INFO_CHANGE(1, get_logger(), "get map");
         if (target_pose_) {
-          if (!check_pos(base_link_pose_)||!check_pos(target_pose_.value()))
+          // if (!check_pos(base_link_pose_)||!check_pos(target_pose_.value()))
+          if (!check_pos(target_pose_.value()))
             return false;
           PathPointd start = make_pathpoint<double>(base_link_pose_);
           PathPointd end = make_pathpoint<double>(target_pose_.value());
