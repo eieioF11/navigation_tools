@@ -195,14 +195,14 @@ public:
       create_publisher<nav_msgs::msg::Path>(OPTIPATH_TOPIC, rclcpp::QoS(10).reliable());
     opti_twists_pub_ = create_publisher<extension_msgs::msg::TwistMultiArray>(
       OPTITWISTS_TOPIC, rclcpp::QoS(10).reliable());
-    perfomance_pub_ = create_publisher<std_msgs::msg::Float32>(
-      "mpc_path_planning/solve_time", rclcpp::QoS(5));
-    perfomance_ave_pub_ = create_publisher<std_msgs::msg::Float32>(
-      "mpc_path_planning/ave_solve_time", rclcpp::QoS(5));
+    perfomance_pub_ =
+      create_publisher<std_msgs::msg::Float32>("mpc_path_planning/solve_time", rclcpp::QoS(5));
+    perfomance_ave_pub_ =
+      create_publisher<std_msgs::msg::Float32>("mpc_path_planning/ave_solve_time", rclcpp::QoS(5));
     obstacles_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
       "mpc_path_planning/obstacles", rclcpp::QoS(5));
-    mpc_dt_pub_ = create_publisher<std_msgs::msg::Float32>(
-      "mpc_path_planning/dt", rclcpp::QoS(10).reliable());
+    mpc_dt_pub_ =
+      create_publisher<std_msgs::msg::Float32>("mpc_path_planning/dt", rclcpp::QoS(10).reliable());
     target_pub_ = create_publisher<geometry_msgs::msg::PoseStamped>(
       "mpc_path_planning/target", rclcpp::QoS(10));
     // subscriber
@@ -251,8 +251,7 @@ public:
           now_vel_.linear.x, now_vel_.linear.y, now_vel_.angular.z, msg->linear.x, msg->linear.y,
           msg->angular.z);
       });
-    if (time_sync_)
-      set_time_sync("mpc_path_planning/clock", rclcpp::QoS(10));
+    if (time_sync_) set_time_sync("mpc_path_planning/clock", rclcpp::QoS(10));
     // action server
     using namespace std::placeholders;
     action_server_ = rclcpp_action::create_server<NavigateToPose>(
@@ -383,8 +382,7 @@ public:
     if (!tf_buffer_.canTransform(
           ROBOT_FRAME, MAP_FRAME, rclcpp::Time(0),
           tf2::durationFromSec(1.0))) {  // 変換無いよ
-      RCLCPP_WARN(
-        get_logger(), "%s %s can not Transform", MAP_FRAME.c_str(), ROBOT_FRAME.c_str());
+      RCLCPP_WARN(get_logger(), "%s %s can not Transform", MAP_FRAME.c_str(), ROBOT_FRAME.c_str());
       return;
     }
     auto map_to_base_link = lookup_transform(tf_buffer_, ROBOT_FRAME, MAP_FRAME);
@@ -436,7 +434,7 @@ public:
       feedback->current_pose.header = make_header(MAP_FRAME, get_now());
       feedback->current_pose.pose = make_geometry_pose(base_link_pose);
       feedback->distance_remaining = target_distance_;
-      feedback->navigation_time = get_now() -start_time_;
+      feedback->navigation_time = get_now() - start_time_;
     }
   }
 
@@ -588,9 +586,9 @@ private:
   std::optional<Pathd> global_path_;
   std::shared_ptr<MPCPathPlanner> planner_;
 
-  double target_distance_; // feedback用(controllerからの距離情報)
+  double target_distance_;  // feedback用(controllerからの距離情報)
 
-  void end() //終了時の処理
+  void end()  //終了時の処理
   {
     target_pose_ = std::nullopt;
     global_path_ = std::nullopt;
@@ -600,7 +598,7 @@ private:
     planner_->reset();
   }
 
-  bool check_target(const Pose3d & target_pose) //目標地点が壁でないか確認
+  bool check_target(const Pose3d & target_pose)  //目標地点が壁でないか確認
   {
     Vector2d target = target_pose.position.to_vector2();
     if (map_) {
@@ -614,7 +612,7 @@ private:
     return true;
   }
 
-  void publish_target(const Pose3d & base_link_pose) //デバック用 目標地点の出力
+  void publish_target(const Pose3d & base_link_pose)  //デバック用 目標地点の出力
   {
     static Timerd debug_timer;
     if (debug_timer.cyclic(1.0)) {
@@ -633,6 +631,7 @@ private:
     double dist;
     bool operator<(const obstacle_t & o) const { return o.dist < dist; };
   };
+  double obstacle_z_;
   std::priority_queue<obstacle_t> obstacles_;
   visualization_msgs::msg::MarkerArray obstacles_marker_;
   Vector3d obstacle_size_;
@@ -659,7 +658,7 @@ private:
           Vector2d diff = pre_obs.pos - obstacle.pos;
           if (diff.norm() >= (NEARBY_OBSTACLE_LIMIT * obstacle_size_.z))
             obs_p = obstacle.pos;
-          else { //近い障害物は破棄
+          else {  //近い障害物は破棄
             i--;
             obstacles_.pop();
             continue;
@@ -672,7 +671,7 @@ private:
       set_value(dm_obs, obs_p);
       dm_obstacles(Sl(), i) = dm_obs;
       obstacles_marker_.markers.at(i) =
-        make_circle_maker(make_header(MAP_FRAME, get_now()), obs_p, i, color, obstacle_size_);
+        make_circle_maker(make_header(MAP_FRAME, get_now()), obs_p, i, color, obstacle_size_,obstacle_z_);
     }
     return std::make_pair(dm_obstacles, dm_obstacles_size);
   }
@@ -680,8 +679,9 @@ private:
   void obstacles_detect(Pose3d robot_pose)
   {
     if (map_) {
-      auto start = get_now();
+      auto start = now();
       Vector2d robot = {robot_pose.position.x, robot_pose.position.y};
+      obstacle_z_ = robot_pose.position.z;
       clear_obstacles();
       // 探索範囲計算
       Vector2d start_cell = map_.value().get_grid_pos(
@@ -704,13 +704,11 @@ private:
       std::cout << "end cell:" << end_x << "," << end_y << std::endl;
 #endif
       // 障害物探索
-#pragma omp parallel for
       for (size_t y = start_y; y < end_y; y++) {
         for (size_t x = start_x; x < end_x; x++) {
           if (map_.value().is_wall(x, y)) {
             Vector2d obstacle = map_.value().grid_to_pos(x, y);
             double dist = (obstacle - robot).norm();
-#pragma omp critical
             obstacles_.push({obstacle, dist});
           }
         }
@@ -734,7 +732,7 @@ private:
 
 #if defined(OBSTACLE_DETECT_DEBUG_OUTPUT)
       std::cout << "obstacles size:" << obstacles_.size() << std::endl;
-      std::cout << "obstacles detect time:" << (get_now() - start).seconds() << std::endl;
+      std::cout << "obstacles detect time:" << (now() - start).seconds() << std::endl;
 #endif
     }
   }
@@ -747,9 +745,11 @@ private:
     mx_obstacles_size_ = opti.parameter(2);
   }
 
-  void add_cost_function(casadi::MX & cost, const casadi::MX & X, const casadi::MX & U) {} //ユーザー定義コスト関数の追加
+  void add_cost_function(casadi::MX & cost, const casadi::MX & X, const casadi::MX & U) {
+  }  //ユーザー定義コスト関数の追加
 
-  void add_constraints(casadi::Opti & opti, const casadi::MX & X, const casadi::MX & U) //ユーザー定義制約の追加
+  void add_constraints(
+    casadi::Opti & opti, const casadi::MX & X, const casadi::MX & U)  //ユーザー定義制約の追加
   {
     using namespace casadi;
     using Sl = casadi::Slice;
@@ -763,15 +763,11 @@ private:
     }
   }
 
-  void set_user_param(casadi::Opti & opti) // ユーザー定義パラメータの設定
+  void set_user_param(casadi::Opti & opti)  // ユーザー定義パラメータの設定
   {
     auto dm_obstacles = set_obstacle(make_color(1.0, 0.0, 0.0, 0.1));
     opti.set_value(mx_obstacles_, dm_obstacles.first);        // 障害物の位置追加
     opti.set_value(mx_obstacles_size_, dm_obstacles.second);  // 障害物のsize追加
     obstacles_pub_->publish(obstacles_marker_);
-#if defined(OBSTACLE_DETECT_DEBUG_OUTPUT)
-    std::cout << "dm_obstacles_size:" << dm_obstacles_size << std::endl;
-    std::cout << "set obstacles param" << std::endl;
-#endif
   }
 };

@@ -7,7 +7,7 @@
 #include <omp.h>
 
 // #define PLANNER_DEBUG_OUTPUT
-#define USE_OMP
+// #define USE_OMP
 // grid path planner
 #include "common_lib/planner/a_star.hpp"
 #include "common_lib/planner/dijkstra.hpp"
@@ -199,6 +199,10 @@ private:
     GridMap map = make_gridmap(dist_map_msg_);
     Vector2d target = target_pose.position.to_vector2();
     Vector2d target_cell = map.get_grid_pos(target);
+    if(!map.is_contain(target_cell)) {
+      RCLCPP_WARN(get_logger(), "this pos is out of map");
+      return false;
+    }
     if (map.is_wall(target_cell)) {
       RCLCPP_WARN(get_logger(), "this pos is wall");
       return false;

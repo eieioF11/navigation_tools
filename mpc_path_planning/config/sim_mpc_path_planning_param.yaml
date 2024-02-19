@@ -14,11 +14,11 @@ mpc_path_planning_node:
         map_frame: "map"
         robot_frame: "base_link"
       planning_period: 0.001 #[s]
-      global_planning_period: 1.0 #[s]
+      global_planning_period: 0.5 #[s]
       time_sync: true
       mpc:
         dt: 0.135 #[s]
-        horizon_time: 4.0
+        horizon_time: 5.0
         pos_error: 2.0 #[m] 0.8
         # ロボット制約
         forward_only: false
@@ -37,9 +37,9 @@ mpc_path_planning_node:
           final_state: [0.5, 0.0, 0.5, 50.0, 50.0, 30.0] #終端コストの重み     [10.0, 0.0, 10.0, 800.0, 800.0, 10.0]
           ref_state: [0.0, 0.0, 0.0, 80.0, 80.0, 0.5] #初期経路(grid_path)とのエラーコストの重み
           control: [10.0, 0.0, 20.0] #制御量コストの重み
-          diff_control: [20.0, 0.0, 50.0] #制御量変化コストの重み
+          diff_control: [20.0, 0.0, 100.0] #制御量変化コストの重み
         warm_start:
-          latest_gpl_norm: 0.01 #[m] 最後に初期値計算を行った地点からlatest_gpl_norm[m]離れたら
+          latest_gpl_norm: 0.1 #[m] 最後に初期値計算を行った地点からlatest_gpl_norm[m]離れたら
           latest_target_norm: 0.001 #[m] 目標値がlatest_target_norm[m]以内(変わってない)とき
         terminal_range: 0.6
         ipopt: #ソルバー設定

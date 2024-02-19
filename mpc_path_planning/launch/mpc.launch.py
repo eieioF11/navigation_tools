@@ -29,6 +29,8 @@ def generate_launch_description():
             namespace='',
             output="screen",
             parameters=[LaunchConfiguration('config')],
+            # prefix=['valgrind --tool=callgrind'],
+            # prefix=['xterm -e valgrind --tool=callgrind'],
             respawn=True,
         ),
         Node(
@@ -37,6 +39,7 @@ def generate_launch_description():
             namespace='',
             output="screen",
             parameters=[LaunchConfiguration('config')],
+            # prefix=['valgrind --tool=callgrind'],
             respawn=True,
         ),
         Node(
@@ -45,6 +48,8 @@ def generate_launch_description():
             namespace='',
             output="screen",
             parameters=[LaunchConfiguration('config')],
+            # prefix=['valgrind --tool=callgrind'],
+            # prefix=['xterm -e valgrind --tool=callgrind'],
             respawn=True,
         ),
         # Node(

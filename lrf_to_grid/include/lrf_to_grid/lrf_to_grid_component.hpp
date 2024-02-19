@@ -20,10 +20,6 @@
 
 #define _ENABLE_ATOMIC_ALIGNMENT_FIX
 //******************************************************************************
-// for文の実行方法設定
-//  #define LOOP_MODE std::execution::seq // 逐次実行
-//  #define LOOP_MODE std::execution::par // 並列実行
-#define LOOP_MODE std::execution::par_unseq  // 並列化・ベクトル化
 // デバック関連設定
 #define DEBUG_OUTPUT
 //******************************************************************************
@@ -89,12 +85,12 @@ public:
     timer_ = this->create_wall_timer(1s * SMAP_PUBLISH_RATE, [&]() {
 #pragma omp parallel for
       for (auto & cell : storage_map_.data) cell = 0;
-#pragma omp parallel for
       for (const auto & map : gmap_que_) {
+// #pragma omp parallel for
         for (size_t i = 0; i < map.data.size(); i++) {
           if (map.is_wall(map.data[i])) {
             if (!storage_map_.is_wall(storage_map_.data[i])) {
-#pragma omp critical
+// #pragma omp critical
               storage_map_.data[i] = GridMap::WALL_VALUE;
             }
           }
@@ -190,7 +186,7 @@ private:
 #pragma omp parallel for
       for (auto & cell : gmap_.data) cell = 0;
         // マップ作成
-#pragma omp parallel for
+// #pragma omp parallel for
       for (const auto point : cut_cloud.points) {
         Vector2d p = gmap_.get_grid_pos(
           conversion_vector2<pcl::PointXYZ, Vector2d>(point));  // グリッド上の位置取得
@@ -202,7 +198,7 @@ private:
             if (gmap_.is_contain(
                   np))  // その点がgmap_.info.widthとgmap_.info.heightの範囲内かどうか
               if (!gmap_.is_wall(gmap_.at(np))) {
-#pragma omp critical
+// #pragma omp critical
                 gmap_.set(np, GridMap::WALL_VALUE);
               }
           }

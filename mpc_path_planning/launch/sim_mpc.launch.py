@@ -30,6 +30,8 @@ def generate_launch_description():
             # output="screen",
             arguments=['--ros-args', '--log-level', 'WARN'],
             parameters=[os.path.join(get_package_share_directory('lrf_to_grid'), "config", "sim_lrf_to_grid_param.yaml")],
+            # prefix=['valgrind --tool=callgrind'],
+            # prefix=['xterm -e valgrind --tool=callgrind'],
             respawn=True,
         ),
     ]
