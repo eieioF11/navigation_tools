@@ -31,6 +31,7 @@
 
 // common_lib utility
 #include "common_lib/ros2_utility/extension_msgs_util.hpp"
+#include "common_lib/ros2_utility/jsk_msgs_util.hpp"
 #include "common_lib/ros2_utility/marker_util.hpp"
 #include "common_lib/ros2_utility/msg_util.hpp"
 #include "common_lib/ros2_utility/ros_opencv_util.hpp"
@@ -189,6 +190,11 @@ public:
     planner_->set_kinematics_model(omni_directional_model(mpc_config_));
 #endif
     planner_->init_solver();
+    nav_mode_ = make_overlay_menu("Navigation Mode", {"initialization", "standby", "running"}, 0);
+    control_mode_ = make_overlay_menu(
+      "Control Mode", {"standby", "running", "success", "aborted", "canceled"}, 0);
+    global_planner_mode_ = make_overlay_menu(
+      "Global Planner Mode", {"standby", "running", "success", "aborted", "canceled"}, 0);
     // publisher
     init_path_pub_ = create_publisher<nav_msgs::msg::Path>(INITPATH_TOPIC, rclcpp::QoS(10));
     opti_path_pub_ =
@@ -205,6 +211,15 @@ public:
       create_publisher<std_msgs::msg::Float32>("mpc_path_planning/dt", rclcpp::QoS(10).reliable());
     target_pub_ = create_publisher<geometry_msgs::msg::PoseStamped>(
       "mpc_path_planning/target", rclcpp::QoS(10));
+    nav_mode_pub_ = create_publisher<jsk_rviz_plugin_msgs::msg::OverlayMenu>(
+      "mpc_path_planning/nav_mode", rclcpp::QoS(10));
+    controller_mode_pub_ = create_publisher<jsk_rviz_plugin_msgs::msg::OverlayMenu>(
+      "mpc_path_planning/controller_mode", rclcpp::QoS(10));
+    global_planner_mode_pub_ = create_publisher<jsk_rviz_plugin_msgs::msg::OverlayMenu>(
+      "mpc_path_planning/global_planner_mode", rclcpp::QoS(10));
+    nav_mode_pub_->publish(nav_mode_);
+    controller_mode_pub_->publish(control_mode_);
+    global_planner_mode_pub_->publish(global_planner_mode_);
     // subscriber
     goal_sub_ = create_subscription<geometry_msgs::msg::PoseStamped>(
       TARGET_TOPIC, rclcpp::QoS(10), [&](geometry_msgs::msg::PoseStamped::SharedPtr msg) {
@@ -230,6 +245,11 @@ public:
 #if defined(NON_HOLONOMIC)
         now_vel_.linear.y = 0.0;
 #endif
+        //debug
+        if (nav_mode_.current_index == 0) {
+          if (menu_timer_.elapsed() > 3.0) set_menu(1);
+        }
+        nav_mode_pub_->publish(nav_mode_);
       });
     map_sub_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
       MAP_TOPIC, rclcpp::QoS(10).reliable(),
@@ -274,6 +294,7 @@ public:
         res->success = true;
         res->message = end_ ? "mpc_path_planning reset!" : " ";
         if (req->data) {
+          set_menu(0);
           target_pose_ = std::nullopt;
           global_path_ = std::nullopt;
           controller_running_ = false;
@@ -294,6 +315,7 @@ public:
       RCLCPP_INFO(get_logger(), "Waiting for action server...");
       rclcpp::sleep_for(500ms);
     }
+    menu_timer_.reset();
   };
 
   // Action Server
@@ -314,6 +336,7 @@ public:
     planner_->reset();
     controler_send_target(target_pose_.value());
     global_planner_send_target(target_pose_.value());
+    set_menu(2);
     (void)uuid;
     return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
   }
@@ -355,6 +378,7 @@ public:
         end();
         goal_handle->succeed(result);
         RCLCPP_INFO(get_logger(), "Goal succeeded");
+        nav_mode_pub_->publish(nav_mode_);
         return;
       }
       if (planner_stop_) {
@@ -460,6 +484,8 @@ public:
         RCLCPP_DEBUG(get_logger(), "Distance remaininf = %f", feedback->distance_remaining);
         target_distance_ = feedback->distance_remaining;
         controller_running_ = true;
+        control_mode_.current_index = 1;
+        controller_mode_pub_->publish(control_mode_);
       };
     send_goal_options.result_callback =
       [&](const ClientGoalHandleNavigateToPose::WrappedResult & result) {
@@ -467,17 +493,25 @@ public:
         end_ = true;
         switch (result.code) {
           case rclcpp_action::ResultCode::SUCCEEDED:
+            control_mode_.current_index = 2;
+            controller_mode_pub_->publish(control_mode_);
             RCLCPP_DEBUG(get_logger(), "Controller Success!!!");
             break;
           case rclcpp_action::ResultCode::ABORTED:
+            control_mode_.current_index = 3;
+            controller_mode_pub_->publish(control_mode_);
             RCLCPP_ERROR(get_logger(), "Controller Goal was aborted");
             planner_running_ = false;
             return;
           case rclcpp_action::ResultCode::CANCELED:
+            control_mode_.current_index = 4;
+            controller_mode_pub_->publish(control_mode_);
             RCLCPP_ERROR(get_logger(), "Controller Goal was canceled");
             planner_running_ = false;
             return;
           default:
+            control_mode_.current_index = 0;
+            controller_mode_pub_->publish(control_mode_);
             RCLCPP_ERROR(get_logger(), "Controller Unknown result code");
             return;
         }
@@ -497,6 +531,8 @@ public:
     auto goal_msg = NavigateToPose::Goal();
     goal_msg.pose.header = make_header(MAP_FRAME, get_now());
     goal_msg.pose.pose = make_geometry_pose(target_pose);
+    global_planner_mode_.current_index = 1;
+    global_planner_mode_pub_->publish(global_planner_mode_);
     // 進捗状況を表示するFeedbackコールバックを設定
     auto send_goal_options = rclcpp_action::Client<NavigateToPose>::SendGoalOptions();
     // global_plannerに送信
@@ -505,6 +541,8 @@ public:
         ClientGoalHandleNavigateToPose::SharedPtr,
         const std::shared_ptr<const NavigateToPose::Feedback> feedback) {
         global_planner_running_ = true;
+        global_planner_mode_.current_index = 1;
+        global_planner_mode_pub_->publish(global_planner_mode_);
       };
     send_goal_options.result_callback =
       [&](const ClientGoalHandleNavigateToPose::WrappedResult & result) {
@@ -512,17 +550,25 @@ public:
         switch (result.code) {
           case rclcpp_action::ResultCode::SUCCEEDED:
             RCLCPP_DEBUG(get_logger(), "Global Planner Success!!!");
+            global_planner_mode_.current_index = 2;
+            global_planner_mode_pub_->publish(global_planner_mode_);
             break;
           case rclcpp_action::ResultCode::ABORTED:
             RCLCPP_ERROR(get_logger(), "Global Planner Goal was aborted");
+            global_planner_mode_.current_index = 3;
+            global_planner_mode_pub_->publish(global_planner_mode_);
             planner_running_ = false;
             return;
           case rclcpp_action::ResultCode::CANCELED:
             RCLCPP_ERROR(get_logger(), "Global Planner Goal was canceled");
+            global_planner_mode_.current_index = 4;
+            global_planner_mode_pub_->publish(global_planner_mode_);
             planner_running_ = false;
             return;
           default:
             RCLCPP_ERROR(get_logger(), "Global Planner Unknown result code");
+            global_planner_mode_.current_index = 0;
+            global_planner_mode_pub_->publish(global_planner_mode_);
             return;
         }
       };
@@ -551,6 +597,7 @@ private:
   double NEARBY_OBSTACLE_LIMIT;
   //timer
   rclcpp::Time start_time_;
+  Timerd menu_timer_;
   // tf
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener listener_;
@@ -575,6 +622,9 @@ private:
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr perfomance_pub_;
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr perfomance_ave_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr obstacles_pub_;
+  rclcpp::Publisher<jsk_rviz_plugin_msgs::msg::OverlayMenu>::SharedPtr nav_mode_pub_;
+  rclcpp::Publisher<jsk_rviz_plugin_msgs::msg::OverlayMenu>::SharedPtr controller_mode_pub_;
+  rclcpp::Publisher<jsk_rviz_plugin_msgs::msg::OverlayMenu>::SharedPtr global_planner_mode_pub_;
   // service
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr reset_srv_;
   // twist
@@ -585,6 +635,16 @@ private:
   std::optional<GridMap> map_;
   std::optional<Pathd> global_path_;
   std::shared_ptr<MPCPathPlanner> planner_;
+  // debug nav mode
+  jsk_rviz_plugin_msgs::msg::OverlayMenu nav_mode_;
+  void set_menu(int i)
+  {
+    if (i == 0) menu_timer_.reset();
+    nav_mode_.current_index = i;
+    nav_mode_pub_->publish(nav_mode_);
+  }
+  jsk_rviz_plugin_msgs::msg::OverlayMenu control_mode_;
+  jsk_rviz_plugin_msgs::msg::OverlayMenu global_planner_mode_;
 
   double target_distance_;  // feedback用(controllerからの距離情報)
 
@@ -596,6 +656,11 @@ private:
     global_planner_running_ = false;
     planner_running_ = false;
     planner_->reset();
+    set_menu(1);
+    control_mode_.current_index = 0;
+    controller_mode_pub_->publish(control_mode_);
+    global_planner_mode_.current_index = 0;
+    global_planner_mode_pub_->publish(global_planner_mode_);
   }
 
   bool check_target(const Pose3d & target_pose)  //目標地点が壁でないか確認
@@ -670,8 +735,8 @@ private:
       }
       set_value(dm_obs, obs_p);
       dm_obstacles(Sl(), i) = dm_obs;
-      obstacles_marker_.markers.at(i) =
-        make_circle_maker(make_header(MAP_FRAME, get_now()), obs_p, i, color, obstacle_size_,obstacle_z_);
+      obstacles_marker_.markers.at(i) = make_circle_maker(
+        make_header(MAP_FRAME, get_now()), obs_p, i, color, obstacle_size_, obstacle_z_);
     }
     return std::make_pair(dm_obstacles, dm_obstacles_size);
   }
