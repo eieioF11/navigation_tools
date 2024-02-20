@@ -89,7 +89,7 @@ public:
     if(time_sync_)
     {
       clock_pub_ = create_publisher<rosgraph_msgs::msg::Clock>("mpc_path_planning/clock", rclcpp::QoS(10));
-      timer_ = create_wall_timer(1ns, [&]() {
+      timer_ = create_wall_timer(1ms, [&]() {
         rosgraph_msgs::msg::Clock clock_msg;
         clock_msg.clock = get_clock()->now();
         clock_pub_->publish(clock_msg);
