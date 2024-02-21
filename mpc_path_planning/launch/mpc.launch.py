@@ -31,6 +31,7 @@ def generate_launch_description():
             parameters=[LaunchConfiguration('config')],
             # prefix=['valgrind --tool=callgrind'],
             # prefix=['xterm -e valgrind --tool=callgrind'],
+            # prefix=['valgrind --tool=callgrind --dump-instr=yes -v --instr-atstart=no --verbose'],
             respawn=True,
         ),
         Node(
