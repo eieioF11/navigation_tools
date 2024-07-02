@@ -1,0 +1,27 @@
+mppi_path_planning_node:
+  ros__parameters:
+    mppi_path_planning:
+      tf_frame:
+        map: "map"
+        base_link: "base_link"
+      topic_name:
+        map: "/map"
+        target: "/goal_pose"
+        odom: "/odom"
+        cmd_vel: "/auto/cmd_vel"
+      planning_period: 0.01
+      min_vel: [-0.3, 0.0, -1.0]
+      max_vel: [0.3, 0.0, 1.0]
+      mppi:
+        T: 40
+        K: 1000
+        dt: 0.1 # [s]
+        lambda: 1.0 # temperature parameter
+        alpha: 0.2
+        sigma: [0.25, 0.0001, 0.25]
+        weight:
+          state: [10.0, 0.0, 1.0, 800.0, 800.0, 0.0]
+          terminal: [0.0, 0.0, 0.0, 1200.0, 1200.0, 1.0]
+          control: [2.0, 0.0, 5.0]
+        obstacle_cost: 2000.0
+        window_size: 20.0 # 70.0
