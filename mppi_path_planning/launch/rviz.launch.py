@@ -9,7 +9,7 @@ from launch_ros.descriptions import ComposableNode
 from launch.substitutions import LaunchConfiguration, PythonExpression
 
 def generate_launch_description():
-    share_dir = get_package_share_directory('mpc_path_planning')
+    share_dir = get_package_share_directory('mppi_path_planning')
     rviz_config_file = os.path.join(share_dir, 'rviz','test.rviz')
     rviz2_node = launch_ros.actions.Node(
         package='rviz2',

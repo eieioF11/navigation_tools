@@ -1,0 +1,24 @@
+lrf_to_grid_node:
+  ros__parameters:
+    lrf_to_grid:
+      topic_name:
+        map: "/lrf/map"
+        storage_map: "/lrf/storage_map"
+        laser: "/scan"
+        cloud: "/velodyne_points"
+      tf_frame:
+        map_frame: "map"
+        robot_frame: "base_link"
+      add_cell: true
+      storage_map:
+        publish_rate: 1.0 #[s]
+        que_size: 6
+      filter:
+        voxelgrid_size: 0.05
+        z_max: 1.5
+        z_min: 0.55
+      grid_map_info:
+        resolution: 0.12 #[m] def 0.05
+        # origin: [-5.0,-5.0,0.0]
+        width: 25.0 #[m]
+        height: 25.0 #[m]

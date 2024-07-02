@@ -1,8 +1,12 @@
 # navigation_tools
 ナビゲーション勉強用
+## install
+
+```bash
+git submodule update --init --recursive
+```
+
 ## パッケージリスト
 - grid path planner (a* and wave propagation)
 - mpc path planner (開発途中)
-## todo
-追加予定パッケージリスト
-- pid path follower
+- mppi path planner (開発途中)

@@ -16,7 +16,7 @@ import launch_ros.actions
 def generate_launch_description():
     pkg_dir = get_package_share_directory('mppi_path_planning')
     list = [
-        # launch_ros.actions.SetParameter(name='use_sim_time', value=True),
+        launch_ros.actions.SetParameter(name='use_sim_time', value=True),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 [os.path.join(get_package_share_directory("data_logger"), "launch"), "/data_logger.launch.py"]
@@ -27,7 +27,7 @@ def generate_launch_description():
             executable='mppi_path_planning',
             namespace='',
             output="screen",
-            parameters=[os.path.join(pkg_dir, "config", "mppi_path_planning_param.yaml")],
+            parameters=[os.path.join(pkg_dir, "config", "sim_mppi_path_planning_param.yaml")],
             # prefix=['valgrind --tool=callgrind'],
             # prefix=['xterm -e valgrind --tool=callgrind'],
             # prefix=['valgrind --tool=callgrind --dump-instr=yes -v --instr-atstart=no --verbose'],
@@ -39,8 +39,31 @@ def generate_launch_description():
             namespace='',
             # output="screen",
             arguments=['--ros-args', '--log-level', 'WARN'],
-            parameters=[os.path.join(pkg_dir, "config", "lrf_to_grid_param.yaml")],
+            parameters=[os.path.join(pkg_dir, "config", "sim_lrf_to_grid_param.yaml")],
             respawn=True,
+        ),
+        Node(
+            package="tf2_ros",
+            executable="static_transform_publisher",
+            parameters=[{'use_sim_time': True}],
+            arguments=[
+                "--x",
+                "0.0",
+                "--y",
+                "0.0",
+                "--z",
+                "0.0",
+                "--yaw",
+                "0.0",
+                "--pitch",
+                "0.0",
+                "--roll",
+                "0.0",
+                "--frame-id",
+                "odom",
+                "--child-frame-id",
+                "map",
+            ],
         ),
     ]
 
