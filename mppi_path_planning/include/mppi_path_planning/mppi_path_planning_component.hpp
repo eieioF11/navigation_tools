@@ -79,10 +79,10 @@ public:
     // param
     PLANNING_PERIOD = param<double>("mppi_path_planning.planning_period", 0.1);
     // 収束判定
-    GOAL_POS_RANGE = param<double>("control.goal.pos_range", 0.01);
-    GOAL_ANGLE_RANGE = unit_cast<unit::angle::rad>(param<double>("control.goal.angle_range", 0.1));
-    GOAL_MIN_VEL_RANGE = param<double>("control.goal.min_vel_range", 0.001);
-    GOAL_MIN_ANGULAR_RANGE = param<double>("control.goal.min_angular_range", 0.001);
+    GOAL_POS_RANGE = param<double>("mppi_path_planning.goal.pos_range", 0.01);
+    GOAL_ANGLE_RANGE = unit_cast<unit::angle::rad>(param<double>("mppi_path_planning.goal.angle_range", 0.1));
+    GOAL_MIN_VEL_RANGE = param<double>("mppi_path_planning.goal.min_vel_range", 0.001);
+    GOAL_MIN_ANGULAR_RANGE = param<double>("mppi_path_planning.goal.min_angular_range", 0.001);
     // mppi
     MPPI::param_t mppi_param;
     mppi_param.T = param<int>("mppi_path_planning.mppi.T", 40);
@@ -136,7 +136,7 @@ public:
     cmd_vel_pub_ =
         create_publisher<geometry_msgs::msg::Twist>(CMD_VEL_TOPIC, rclcpp::QoS(10));
     opti_path_pub_ =
-        create_publisher<nav_msgs::msg::Path>("mppi/opti_paht", rclcpp::QoS(10).reliable());
+        create_publisher<nav_msgs::msg::Path>("mppi/opti_path", rclcpp::QoS(10).reliable());
     sample_path_marker_pub_ =
         create_publisher<visualization_msgs::msg::MarkerArray>("mppi/sample_path", rclcpp::QoS(10));
     mppi_calc_time_pub_ = create_publisher<std_msgs::msg::Float32>("mppi/calc_time", rclcpp::QoS(10));
@@ -154,6 +154,19 @@ public:
     goal_sub_ = create_subscription<geometry_msgs::msg::PoseStamped>(
         TARGET_TOPIC, rclcpp::QoS(10), [&](geometry_msgs::msg::PoseStamped::SharedPtr msg)
         { x_tar_ = pose_to_vec6_t(msg->pose); });
+    // service
+    reset_srv_ = create_service<std_srvs::srv::SetBool>(
+        "planner/reset", [&](
+                             const std_srvs::srv::SetBool::Request::SharedPtr req,
+                             const std_srvs::srv::SetBool::Response::SharedPtr res)
+        {
+        res->success = true;
+        res->message = req->data ? "planner reset!" : " ";
+        if (req->data) {
+          x_tar_ = std::nullopt;
+          cmd_vel_pub_->publish(stop());
+          RCLCPP_INFO(get_logger(), "planner reset!");
+        } });
     // timer
     timer_ = this->create_wall_timer(1s * PLANNING_PERIOD, [&]()
                                      {
@@ -187,10 +200,11 @@ public:
       MPPI::vec3_t v_t;
       v_t = u[0];
       std::cout << "v_t:" << v_t.transpose() << std::endl;
-      std::cout << "diff_x:" << (x_tar_.value()-x_t_).tail(2).head(2).transpose() << std::endl;
-      double target_dist = (x_tar_.value()-x_t_).tail(2).head(2).norm();
+      std::cout << "diff_x:" << (x_tar_.value()-x_t_).tail(3).head(2).transpose() << std::endl;
+      double target_dist = (x_tar_.value()-x_t_).tail(3).head(2).norm();
       double target_diff_angle = x_tar_.value().tail(1).norm()-x_t_.tail(1).norm();
       std::cout << "target_dist:" << target_dist << " target_diff_angle:" << target_diff_angle << std::endl;
+      target_diff_angle = 0.0;
       // ゴール判定
       if (target_dist < GOAL_POS_RANGE) {
         if (target_diff_angle < GOAL_ANGLE_RANGE) {
