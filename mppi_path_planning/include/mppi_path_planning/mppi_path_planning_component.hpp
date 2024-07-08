@@ -65,6 +65,7 @@ public:
   {
     RCLCPP_INFO(get_logger(), "start mppi_path_planning_node");
     THREAD_NUM = omp_get_max_threads();
+    x_tar_ = std::nullopt;
     // frame
     MAP_FRAME = param<std::string>("mppi_path_planning.tf_frame.map_frame", "map");
     ROBOT_FRAME = param<std::string>("mppi_path_planning.tf_frame.robot_frame", "base_link");
@@ -77,6 +78,11 @@ public:
     std::string CMD_VEL_TOPIC = param<std::string>("mppi_path_planning.topic_name.cmd_vel", "/auto/cmd_vel");
     // param
     PLANNING_PERIOD = param<double>("mppi_path_planning.planning_period", 0.1);
+    // 収束判定
+    GOAL_POS_RANGE = param<double>("control.goal.pos_range", 0.01);
+    GOAL_ANGLE_RANGE = unit_cast<unit::angle::rad>(param<double>("control.goal.angle_range", 0.1));
+    GOAL_MIN_VEL_RANGE = param<double>("control.goal.min_vel_range", 0.001);
+    GOAL_MIN_ANGULAR_RANGE = param<double>("control.goal.min_angular_range", 0.001);
     // mppi
     MPPI::param_t mppi_param;
     mppi_param.T = param<int>("mppi_path_planning.mppi.T", 40);
@@ -147,10 +153,7 @@ public:
         { odom_vel_ = msg->twist.twist; });
     goal_sub_ = create_subscription<geometry_msgs::msg::PoseStamped>(
         TARGET_TOPIC, rclcpp::QoS(10), [&](geometry_msgs::msg::PoseStamped::SharedPtr msg)
-        {
-        x_tar_(3) = msg->pose.position.x;
-        x_tar_(4) = msg->pose.position.y;
-        x_tar_(5) = tf2::getYaw(msg->pose.orientation); });
+        { x_tar_ = pose_to_vec6_t(msg->pose); });
     // timer
     timer_ = this->create_wall_timer(1s * PLANNING_PERIOD, [&]()
                                      {
@@ -171,18 +174,41 @@ public:
         x_t_(4) = transform.translation.y;
         x_t_(5) = tf2::getYaw(transform.rotation);
       }
+      if (!x_tar_) {
+        return;
+      }
       std::cout << "MAX threads NUM:" << THREAD_NUM << std::endl;
       std::cout << "x_t:" << x_t_.transpose() << std::endl;
-      std::cout << "x_tar:" << x_tar_.transpose() << std::endl;
+      std::cout << "x_tar:" << x_tar_.value().transpose() << std::endl;
       // mppi計算
-      const std::vector<MPPI::vec3_t> &u = mppi_->path_planning(x_t_, x_tar_);
+      const std::vector<MPPI::vec3_t> &u = mppi_->path_planning(x_t_, x_tar_.value());
       const std::vector<MPPI::vec6_t> &opt_path = mppi_->get_opt_path();
       const std::vector<std::vector<MPPI::vec6_t>> sample_path = mppi_->get_sample_path();
       MPPI::vec3_t v_t;
       v_t = u[0];
       std::cout << "v_t:" << v_t.transpose() << std::endl;
+      std::cout << "diff_x:" << (x_tar_.value()-x_t_).tail(2).head(2).transpose() << std::endl;
+      double target_dist = (x_tar_.value()-x_t_).tail(2).head(2).norm();
+      double target_diff_angle = x_tar_.value().tail(1).norm()-x_t_.tail(1).norm();
+      std::cout << "target_dist:" << target_dist << " target_diff_angle:" << target_diff_angle << std::endl;
+      // ゴール判定
+      if (target_dist < GOAL_POS_RANGE) {
+        if (target_diff_angle < GOAL_ANGLE_RANGE) {
+          RCLCPP_INFO(get_logger(), "goal !");
+          x_tar_ = std::nullopt;
+          cmd_vel_pub_->publish(stop());
+          // if (
+          //   approx_zero(vel, GOAL_MIN_VEL_RANGE) && approx_zero(angular, GOAL_MIN_ANGULAR_RANGE)) {
+          //   RCLCPP_INFO(get_logger(), "goal !");
+          //   opti_twists_ = std::nullopt;
+          //   opti_path_ = std::nullopt;
+          //   cmd_vel_pub_->publish(stop());
+          //   return true;
+          // }
+        }
+      }
       geometry_msgs::msg::Twist twist = make_twist(v_t);
-      cmd_vel_pub_->publish(twist);
+      cmd_vel_pub_->publish(twist); 
       mppi_calc_time_pub_->publish(make_float32(mppi_->get_calc_time()));
       nav_msgs::msg::Path opti_path_msg = make_nav_path(make_header(MAP_FRAME, rclcpp::Clock().now()), opt_path);
       opti_path_pub_->publish(opti_path_msg);
@@ -196,6 +222,10 @@ private:
   std::string MAP_FRAME;
   std::string ROBOT_FRAME;
   double PLANNING_PERIOD;
+  double GOAL_POS_RANGE;
+  double GOAL_ANGLE_RANGE;
+  double GOAL_MIN_VEL_RANGE;
+  double GOAL_MIN_ANGULAR_RANGE;
   // tf
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener listener_;
@@ -213,12 +243,10 @@ private:
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr sample_path_marker_pub_;
   // service
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr reset_srv_;
-  // pose
-  std::optional<Pose3d> target_pose_;
   // vel
   geometry_msgs::msg::Twist odom_vel_;
   // mppi
-  MPPI::vec6_t x_tar_;
+  std::optional<MPPI::vec6_t> x_tar_;
   MPPI::vec6_t x_t_;
   std::shared_ptr<MPPI::MPPIPathPlanner> mppi_;
 #ifdef HOLONOMIC
@@ -265,6 +293,17 @@ private:
   }
 #endif
   // utility
+  MPPI::vec6_t pose_to_vec6_t(const geometry_msgs::msg::Pose &pose, double vx = 0.0, double vy = 0.0, double w = 0.0)
+  {
+    MPPI::vec6_t v;
+    v(0) = vx;
+    v(1) = vy;
+    v(2) = w;
+    v(3) = pose.position.x;
+    v(4) = pose.position.y;
+    v(5) = tf2::getYaw(pose.orientation);
+    return v;
+  }
   MPPI::GridMap make_map(const nav_msgs::msg::OccupancyGrid &gmap_msg)
   {
     MPPI::GridMap gmap;
@@ -330,5 +369,16 @@ private:
       markers.markers.push_back(marker);
     }
     return markers;
+  }
+  geometry_msgs::msg::Twist stop()
+  {
+    geometry_msgs::msg::Twist twist;
+    twist.linear.x = 0.0;
+    twist.linear.y = 0.0;
+    twist.linear.z = 0.0;
+    twist.angular.x = 0.0;
+    twist.angular.y = 0.0;
+    twist.angular.z = 0.0;
+    return twist;
   }
 };
