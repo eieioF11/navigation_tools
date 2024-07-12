@@ -154,7 +154,14 @@ public:
         { odom_vel_ = msg->twist.twist; });
     goal_sub_ = create_subscription<geometry_msgs::msg::PoseStamped>(
         TARGET_TOPIC, rclcpp::QoS(10), [&](geometry_msgs::msg::PoseStamped::SharedPtr msg)
-        { x_tar_ = pose_to_vec6_t(msg->pose); });
+        {
+          x_tar_ = pose_to_vec6_t(msg->pose);
+          if(x_tar_)
+          {
+            log_.set("x_tar", x_tar_.value()(3));
+            log_.set("y_tar", x_tar_.value()(4));
+            log_.set("theta_tar", x_tar_.value()(5));
+          } });
     // service
     reset_srv_ = create_service<std_srvs::srv::SetBool>(
         "planner/reset", [&](
@@ -241,9 +248,6 @@ public:
       visualization_msgs::msg::MarkerArray samples_marker =  make_samples_marker(make_header(MAP_FRAME, rclcpp::Clock().now()),sample_path);
       sample_path_marker_pub_->publish(samples_marker);
       // log設定
-      log_.set("x_tar", x_tar_.value()(3));
-      log_.set("y_tar", x_tar_.value()(4));
-      log_.set("theta_tar", x_tar_.value()(5));
       log_.publish(); });
   }
 
