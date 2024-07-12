@@ -60,7 +60,7 @@ def generate_launch_description():
                 "--roll",
                 "0.0",
                 "--frame-id",
-                "odom",
+                "base_link",
                 "--child-frame-id",
                 "map",
             ],

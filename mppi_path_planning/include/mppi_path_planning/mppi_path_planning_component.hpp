@@ -133,6 +133,7 @@ public:
     mppi_ = std::make_shared<MPPI::MPPIPathPlanner>(mppi_param, std::bind(&MPPIPathPlanning::f, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
     mppi_->set_velocity_limit({min_vel[0], min_vel[1], min_vel[2]}, {max_vel[0], max_vel[1], max_vel[2]});
     // publisher
+    init_data_logger({"vx", "vy", "w", "u_vx", "u_vy", "u_w", "x_t", "y_t", "theta_t", "x_tar", "y_tar", "theta_tar"});
     cmd_vel_pub_ =
         create_publisher<geometry_msgs::msg::Twist>(CMD_VEL_TOPIC, rclcpp::QoS(10));
     opti_path_pub_ =
@@ -186,6 +187,13 @@ public:
         x_t_(3) = transform.translation.x;
         x_t_(4) = transform.translation.y;
         x_t_(5) = tf2::getYaw(transform.rotation);
+        // log設定
+        log_.set("vx", x_t_(0));
+        log_.set("vy", x_t_(1));
+        log_.set("w", x_t_(2));
+        log_.set("x_t", x_t_(3));
+        log_.set("y_t", x_t_(4));
+        log_.set("theta_t", x_t_(5));
       }
       if (!x_tar_) {
         return;
@@ -199,6 +207,10 @@ public:
       const std::vector<std::vector<MPPI::vec6_t>> sample_path = mppi_->get_sample_path();
       MPPI::vec3_t v_t;
       v_t = u[0];
+      // log設定
+      log_.set("u_vx", v_t(0));
+      log_.set("u_vy", v_t(1));
+      log_.set("u_w", v_t(2));
       std::cout << "v_t:" << v_t.transpose() << std::endl;
       std::cout << "diff_x:" << (x_tar_.value()-x_t_).tail(3).head(2).transpose() << std::endl;
       double target_dist = (x_tar_.value()-x_t_).tail(3).head(2).norm();
@@ -227,7 +239,12 @@ public:
       nav_msgs::msg::Path opti_path_msg = make_nav_path(make_header(MAP_FRAME, rclcpp::Clock().now()), opt_path);
       opti_path_pub_->publish(opti_path_msg);
       visualization_msgs::msg::MarkerArray samples_marker =  make_samples_marker(make_header(MAP_FRAME, rclcpp::Clock().now()),sample_path);
-      sample_path_marker_pub_->publish(samples_marker); });
+      sample_path_marker_pub_->publish(samples_marker);
+      // log設定
+      log_.set("x_tar", x_tar_.value()(3));
+      log_.set("y_tar", x_tar_.value()(4));
+      log_.set("theta_tar", x_tar_.value()(5));
+      log_.publish(); });
   }
 
 private:
