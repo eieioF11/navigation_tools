@@ -28,19 +28,19 @@ using namespace std::chrono_literals;
 class LRFToGrid : public ExtensionNode
 {
 public:
-  LRFToGrid(const rclcpp::NodeOptions & options) : LRFToGrid("", options) {}
+  LRFToGrid(const rclcpp::NodeOptions &options) : LRFToGrid("", options) {}
   LRFToGrid(
-    const std::string & name_space = "",
-    const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
-  : ExtensionNode("lrf_to_grid_node", name_space, options),
-    tf_buffer_(this->get_clock()),
-    listener_(tf_buffer_)
+      const std::string &name_space = "",
+      const rclcpp::NodeOptions &options = rclcpp::NodeOptions())
+      : ExtensionNode("lrf_to_grid_node", name_space, options),
+        tf_buffer_(this->get_clock()),
+        listener_(tf_buffer_)
   {
     RCLCPP_INFO(this->get_logger(), "start lrf_to_grid_node");
     // get param
     std::string MAP_TOPIC = param<std::string>("lrf_to_grid.topic_name.map", "/map");
     std::string STORAGE_MAP_TOPIC =
-      param<std::string>("lrf_to_grid.topic_name.storage_map", "/storage_map");
+        param<std::string>("lrf_to_grid.topic_name.storage_map", "/storage_map");
     std::string LASER_TOPIC = param<std::string>("lrf_to_grid.topic_name.laser", "/scan");
     std::string CLOUD_TOPIC = param<std::string>("lrf_to_grid.topic_name.cloud", "/cloud");
     // frame
@@ -66,23 +66,25 @@ public:
     // init
     // publisher
     map_pub_ =
-      this->create_publisher<nav_msgs::msg::OccupancyGrid>(MAP_TOPIC, rclcpp::QoS(10).reliable());
+        this->create_publisher<nav_msgs::msg::OccupancyGrid>(MAP_TOPIC, rclcpp::QoS(10).reliable());
     storage_map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>(
-      STORAGE_MAP_TOPIC, rclcpp::QoS(10).reliable());
+        STORAGE_MAP_TOPIC, rclcpp::QoS(10).reliable());
     debug_cloud_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
-      "lrf_to_grid/debug_points", rclcpp::QoS(10));
+        "lrf_to_grid/debug_points", rclcpp::QoS(10));
     // subscriber
     laser_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
-      LASER_TOPIC, rclcpp::QoS(10), [&](const sensor_msgs::msg::LaserScan::SharedPtr msg) {
+        LASER_TOPIC, rclcpp::QoS(10), [&](const sensor_msgs::msg::LaserScan::SharedPtr msg)
+        {
         sensor_msgs::msg::PointCloud2 get_cloud;
         projector_.projectLaser(*msg, get_cloud);
         get_cloud.header = msg->header;
-        make_grid_map(get_cloud);
-      });
+        make_grid_map(get_cloud); });
     cloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-      CLOUD_TOPIC, rclcpp::QoS(10),
-      [&](const sensor_msgs::msg::PointCloud2::SharedPtr msg) { make_grid_map(*msg); });
-    timer_ = this->create_wall_timer(1s * SMAP_PUBLISH_RATE, [&]() {
+        CLOUD_TOPIC, rclcpp::QoS(10),
+        [&](const sensor_msgs::msg::PointCloud2::SharedPtr msg)
+        { make_grid_map(*msg); });
+    timer_ = this->create_wall_timer(1s * SMAP_PUBLISH_RATE, [&]()
+                                     {
 #pragma omp parallel for
       for (auto & cell : storage_map_.data) cell = 0;
       for (const auto & map : gmap_que_) {
@@ -97,8 +99,7 @@ public:
         }
       }
       storage_map_pub_->publish(
-        make_nav_gridmap(make_header(MAP_FRAME, get_cloud_time_), storage_map_));
-    });
+        make_nav_gridmap(make_header(MAP_FRAME, get_cloud_time_), storage_map_)); });
   }
 
 private:
@@ -110,8 +111,7 @@ private:
   double WIDTH;
   double HEIGHT;
   size_t MAP_QUE_SIZE;
-  const std::array<Vector2d, 8> nb = {Vector2d{1, 0}, {0, 1},  {-1, 0},  {0, -1},
-                                      {1, 1},         {-1, 1}, {-1, -1}, {1, -1}};
+  const std::array<Vector2d, 8> nb = {Vector2d{1, 0}, {0, 1}, {-1, 0}, {0, -1}, {1, 1}, {-1, 1}, {-1, -1}, {1, -1}};
   // param
   std::string MAP_FRAME;
   std::string ROBOT_FRAME;
@@ -135,25 +135,28 @@ private:
   std::vector<GridMap> gmap_que_;
   GridMap storage_map_;
 
-  void make_grid_map(const sensor_msgs::msg::PointCloud2 & get_cloud)
+  void make_grid_map(const sensor_msgs::msg::PointCloud2 &get_cloud)
   {
     if (!tf_buffer_.canTransform(
-          get_cloud.header.frame_id, MAP_FRAME, get_cloud.header.stamp,
-          tf2::durationFromSec(1.0))) {  // 変換無いよ
+            get_cloud.header.frame_id, MAP_FRAME, get_cloud.header.stamp,
+            tf2::durationFromSec(1.0)))
+    { // 変換無いよ
       RCLCPP_WARN(
-        this->get_logger(), "%s %s can not Transform", MAP_FRAME.c_str(),
-        get_cloud.header.frame_id.c_str());
+          this->get_logger(), "%s %s can not Transform", MAP_FRAME.c_str(),
+          get_cloud.header.frame_id.c_str());
       return;
     }
     if (!tf_buffer_.canTransform(
-          ROBOT_FRAME, MAP_FRAME, rclcpp::Time(0),
-          tf2::durationFromSec(1.0))) {  // 変換無いよ
+            ROBOT_FRAME, MAP_FRAME, rclcpp::Time(0),
+            tf2::durationFromSec(1.0)))
+    { // 変換無いよ
       RCLCPP_WARN(
-        this->get_logger(), "%s %s can not Transform", MAP_FRAME.c_str(), ROBOT_FRAME.c_str());
+          this->get_logger(), "%s %s can not Transform", MAP_FRAME.c_str(), ROBOT_FRAME.c_str());
       return;
     }
     auto map_to_base_link = lookup_transform(tf_buffer_, ROBOT_FRAME, MAP_FRAME);
-    if (map_to_base_link) {
+    if (map_to_base_link)
+    {
       rclcpp::Time start_time = rclcpp::Clock().now();
       Pose3d base_link_pose = make_pose(map_to_base_link.value().transform);
       gmap_.info.origin.position.x = base_link_pose.position.x - 0.5 * WIDTH;
@@ -161,56 +164,62 @@ private:
       gmap_.info.origin.position.z = base_link_pose.position.z;
       storage_map_.info.origin = gmap_.info.origin;
       // msg convert
-      std::optional<sensor_msgs::msg::PointCloud2> trans_cloud =
-        transform_pointcloud2(tf_buffer_, MAP_FRAME, get_cloud);
-      if (!trans_cloud) {
-        RCLCPP_ERROR(this->get_logger(), "transform error");
-        return;
-      }
-      pcl::PointCloud<pcl::PointXYZ> cloud;
-      pcl::fromROSMsg(trans_cloud.value(), cloud);
-      if (cloud.empty()) {
+      pcl::PointCloud<pcl::PointXYZ> in_cloud;
+      pcl::fromROSMsg(get_cloud, in_cloud);
+      if (in_cloud.empty())
+      {
         RCLCPP_WARN(this->get_logger(), "cloud empty");
         return;
       }
       // nan値除去
       std::vector<int> mapping;
-      pcl::removeNaNFromPointCloud(cloud, cloud, mapping);
-      cloud = voxelgrid_filter(cloud, VOXELGRID_SIZE, VOXELGRID_SIZE, VOXELGRID_SIZE);
-      pcl::PointCloud<pcl::PointXYZ> cut_cloud = passthrough_filter(
-        "z", cloud, base_link_pose.position.z + Z_MIN, base_link_pose.position.z + Z_MAX);
-
-      debug_cloud_pub_->publish(
-        make_ros_pointcloud2(make_header(MAP_FRAME, get_cloud.header.stamp), cut_cloud));
+      pcl::removeNaNFromPointCloud(in_cloud, in_cloud, mapping);
+      in_cloud = voxelgrid_filter(in_cloud, VOXELGRID_SIZE, VOXELGRID_SIZE, VOXELGRID_SIZE);
+      in_cloud = passthrough_filter("z", in_cloud, Z_MIN, Z_MAX);
+      // 座標変換
+      std::optional<pcl::PointCloud<pcl::PointXYZ>> trans_cloud = transform_pcl_pointcloud(tf_buffer_, get_cloud.header.frame_id,MAP_FRAME,in_cloud);
+      if (!trans_cloud)
+      {
+        RCLCPP_ERROR(this->get_logger(), "transform error");
+        return;
+      }
+      debug_cloud_pub_->publish(make_ros_pointcloud2(make_header(MAP_FRAME, get_cloud.header.stamp), trans_cloud.value()));
       // 初期化
 #pragma omp parallel for
-      for (auto & cell : gmap_.data) cell = 0;
-        // マップ作成
-// #pragma omp parallel for
-      for (const auto point : cut_cloud.points) {
+      for (auto &cell : gmap_.data)
+        cell = 0;
+      // マップ作成
+      // #pragma omp parallel for
+      for (const auto point : trans_cloud.value().points)
+      {
         Vector2d p = gmap_.get_grid_pos(
-          conversion_vector2<pcl::PointXYZ, Vector2d>(point));  // グリッド上の位置取得
-        if (gmap_.is_contain(p))  // その点がgmap_.info.widthとgmap_.info.heightの範囲内かどうか
-          if (!gmap_.is_wall(gmap_.at(p))) gmap_.set(p, GridMap::WALL_VALUE);
-        if (ADD_CELL) {
-          for (size_t i = 0; i < 8; i++) {
+            conversion_vector2<pcl::PointXYZ, Vector2d>(point)); // グリッド上の位置取得
+        if (gmap_.is_contain(p))                                 // その点がgmap_.info.widthとgmap_.info.heightの範囲内かどうか
+          if (!gmap_.is_wall(gmap_.at(p)))
+            gmap_.set(p, GridMap::WALL_VALUE);
+        if (ADD_CELL)
+        {
+          for (size_t i = 0; i < 8; i++)
+          {
             Vector2d np = p + nb[i];
             if (gmap_.is_contain(
-                  np))  // その点がgmap_.info.widthとgmap_.info.heightの範囲内かどうか
-              if (!gmap_.is_wall(gmap_.at(np))) {
-// #pragma omp critical
+                    np)) // その点がgmap_.info.widthとgmap_.info.heightの範囲内かどうか
+              if (!gmap_.is_wall(gmap_.at(np)))
+              {
+                // #pragma omp critical
                 gmap_.set(np, GridMap::WALL_VALUE);
               }
           }
         }
       }
       map_pub_->publish(make_nav_gridmap(make_header(MAP_FRAME, get_cloud.header.stamp), gmap_));
-      //MAP保持
-      gmap_que_.push_back(gmap_);                                               //push
-      if (gmap_que_.size() > MAP_QUE_SIZE) gmap_que_.erase(gmap_que_.begin());  //古いもの削除(pop)
+      // MAP保持
+      gmap_que_.push_back(gmap_); // push
+      if (gmap_que_.size() > MAP_QUE_SIZE)
+        gmap_que_.erase(gmap_que_.begin()); // 古いもの削除(pop)
       get_cloud_time_ = get_cloud.header.stamp;
       double proc_time =
-        unit_cast<unit::time::s, unit::time::ms>((rclcpp::Clock().now() - start_time).seconds());
+          unit_cast<unit::time::s, unit::time::ms>((rclcpp::Clock().now() - start_time).seconds());
       RCLCPP_INFO(this->get_logger(), "proc_time:%f[ms]", proc_time);
     }
   }

@@ -62,7 +62,8 @@ namespace MPPI
     // ノイズ計算
     control_t noise()
     {
-      std::mt19937 engine((std::random_device())());
+      // std::mt19937 engine((std::random_device())());
+      std::mt19937_64 engine((std::random_device())());
       std::normal_distribution<> dist(0.0, 1.0);
       Eigen::LLT<Eigen::MatrixXd> llt(param_.sigma);
       Eigen::MatrixXd L = llt.matrixL();
@@ -147,7 +148,7 @@ namespace MPPI
           }
           xx_mean[i](d) = sum;
         }
-        size_t n_conv = ceil(window_size / 2.0);
+        size_t n_conv = std::ceil(window_size / 2.0);
         xx_mean[0](d) *= window_size / n_conv;
         for (size_t i = 1; i < n_conv; ++i)
         {
@@ -233,7 +234,8 @@ namespace MPPI
           epsilon_[k][t - 1] = noise();
           // ノイズ付き制御入力計算
           control_t v = u_[t - 1] + epsilon_[k][t - 1];
-          // if (k < (1.0 - 0.6) * param_.K) v = epsilon_[k][t - 1];
+          if (k <= (1.0 - param_.J) * param_.K)
+            v = epsilon_[k][t - 1]; // v = vec3_t::Zero(DIM_U, 1);
           // 状態計算
           x = f_(x, clamp(v), param_.dt);
           // ステージコスト計算
@@ -257,8 +259,7 @@ namespace MPPI
       state_t x = x_t;
       for (size_t t = 0; t < param_.T; ++t)
       {
-        u_[t] += w_epsilon[t];
-        u_[t] = clamp(u_[t]);
+        u_[t] = clamp(u_[t] + w_epsilon[t]);
         x = f_(x, u_[t], param_.dt);
         opt_path_[t] = x;
       }

@@ -19,6 +19,7 @@ namespace MPPI {
   struct param_t{
     size_t T; // time horizon
     size_t K; // number of samples
+    double J; // Sampling from Ancillary Controllers k <= (1-J)*K
     double dt; // control interval
     double lambda; // temperature parameter
     double alpha;

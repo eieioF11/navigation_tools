@@ -87,6 +87,7 @@ public:
     MPPI::param_t mppi_param;
     mppi_param.T = param<int>("mppi_path_planning.mppi.T", 40);
     mppi_param.K = param<int>("mppi_path_planning.mppi.K", 500);
+    mppi_param.J = param<double>("mppi_path_planning.mppi.J", 0.1);
     mppi_param.dt = param<double>("mppi_path_planning.mppi.dt", 0.01);
     mppi_param.lambda = param<double>("mppi_path_planning.mppi.lambda", 1.0);
     mppi_param.alpha = param<double>("mppi_path_planning.mppi.alpha", 0.2);
@@ -203,6 +204,7 @@ public:
         log_.set("theta_t", x_t_(5));
       }
       if (!x_tar_) {
+        cmd_vel_pub_->publish(stop());
         return;
       }
       std::cout << "MAX threads NUM:" << THREAD_NUM << std::endl;
@@ -387,12 +389,13 @@ private:
       marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
       marker.action = visualization_msgs::msg::Marker::ADD;
       marker.pose.orientation.w = 1.0;
-      marker.scale.x = 0.005;
+      marker.scale.x = 0.01;
       marker.color.a = 0.3;
       marker.color.r = 0.5;
       marker.color.g = 0.5;
       marker.color.b = 0.5;
       size_t path_num = sample_path[i].size();
+      // std::cout << path_num << std::endl;
       for (int j = 0; j < (int)path_num; j++)
       {
         geometry_msgs::msg::Point p;

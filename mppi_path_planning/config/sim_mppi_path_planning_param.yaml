@@ -5,23 +5,29 @@ mppi_path_planning_node:
         map: "map"
         base_link: "base_link"
       topic_name:
-        map: "/map"
+        map: "/lrf/storage_map"
         target: "/goal_pose"
         odom: "/odom"
         cmd_vel: "cmd_vel"
       planning_period: 0.01
       min_vel: [-0.2, 0.0, -0.5]
       max_vel: [0.2, 0.0, 0.5]
+      goal:
+        pos_range: 0.1 #[m]
+        angle_range: 6.0 #[deg]
+        min_vel_range: 0.5 #[m/s]
+        min_angular_range: 0.5 #[rad/s]
       mppi:
-        T: 30
-        K: 500
+        T: 40
+        K: 1000
+        J: 0.9
         dt: 0.2 # [s]
         lambda: 1.0 # temperature parameter
-        alpha: 0.5
-        sigma: [0.25, 0.0001, 0.25]
+        alpha: 0.9
+        sigma: [0.50, 0.0001, 0.25]
         weight:
-          state: [10.0, 0.0, 1.0, 600.0, 600.0, 0.0]
+          state: [0.0, 0.0, 0.0, 600.0, 600.0, 0.0]
           terminal: [0.0, 0.0, 0.0, 1000.0, 1000.0, 1.0]
           control: [2.0, 0.0, 5.0]
-        obstacle_cost: 2000.0
-        window_size: 20.0 # 70.0
+        obstacle_cost: 10000.0
+        window_size: 40.0 # 70.0
