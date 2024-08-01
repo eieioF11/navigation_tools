@@ -16,7 +16,7 @@ import launch_ros.actions
 def generate_launch_description():
     pkg_dir = get_package_share_directory('mppi_path_planning')
     list = [
-        # launch_ros.actions.SetParameter(name='use_sim_time', value=True),
+        launch_ros.actions.SetParameter(name='use_sim_time', value=True),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 [os.path.join(get_package_share_directory("data_logger"), "launch"), "/data_logger.launch.py"]
