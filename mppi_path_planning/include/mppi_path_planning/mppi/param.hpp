@@ -29,5 +29,8 @@ namespace MPPI {
     Eigen::Matrix<double, 3, 3> R; // ステージコストの入力量重み
     Eigen::Matrix<double, 6, 6> Q_T; // 終端コスト
     double obstacle_cost;
+    bool use_cost_map;
+    double max_cost_map_value;
+    double min_cost_map_value;
   };
 } // namespace MPPI

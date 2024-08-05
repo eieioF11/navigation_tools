@@ -85,11 +85,16 @@ namespace MPPI
         auto [vx, vy] = map_->get_grid_pos(x_t(3), x_t(4));
         // std::cout << "xt:"<< x_t(3) << " yt:"<< x_t(4) << std::endl;
         // std::cout << "vx:"<< vx << " vy:"<< vy << std::endl;
-        if (map_->is_wall(vx, vy))
-        {
+        double cost = static_cast<double>(map_->at(vx, vy))/static_cast<double>(GridMap::WALL_VALUE);
+        if(cost <= param_.min_cost_map_value)
+          cost = 0.0;
+        else if(cost >= param_.max_cost_map_value)
+          cost = 1.0;
+        // std::cout << "map cost:" << cost << std::endl;
+        if (param_.use_cost_map)
+          stage_cost += param_.obstacle_cost * cost;
+        else if (map_->is_wall(vx, vy))
           stage_cost += param_.obstacle_cost;
-          // std::cout << "obstacle" << std::endl;
-        }
       }
       return stage_cost;
     }
@@ -102,11 +107,16 @@ namespace MPPI
       if (map_)
       {
         auto [vx, vy] = map_->get_grid_pos(x_t(3), x_t(4));
-        if (map_->is_wall(vx, vy))
-        {
+        double cost = static_cast<double>(map_->at(vx, vy))/static_cast<double>(GridMap::WALL_VALUE);
+        if(cost <= param_.min_cost_map_value)
+          cost = 0.0;
+        else if(cost >= param_.max_cost_map_value)
+          cost = 1.0;
+        // std::cout << "map cost:" << cost << std::endl;
+        if (param_.use_cost_map)
+          terminal_cost += param_.obstacle_cost * cost;
+        else if (map_->is_wall(vx, vy))
           terminal_cost += param_.obstacle_cost;
-          // std::cout << "obstacle" << std::endl;
-        }
       }
       return terminal_cost;
     }
@@ -236,7 +246,7 @@ namespace MPPI
           control_t v = u_[t - 1] + epsilon_[k][t - 1];
           if (k == 0)
             v = vec3_t::Zero(DIM_U, 1);
-          if (k < (1.0 - param_.J) * param_.K && k!=0 )
+          if (k < (1.0 - param_.J) * param_.K && k != 0)
             v = epsilon_[k][t - 1];
           // 状態計算
           x = f_(x, clamp(v), param_.dt);

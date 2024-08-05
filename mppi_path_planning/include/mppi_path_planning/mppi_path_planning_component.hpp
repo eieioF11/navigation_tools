@@ -131,6 +131,9 @@ public:
     mppi_param.Q = Q;
     mppi_param.R = R;
     mppi_param.Q_T = Q_T;
+    mppi_param.use_cost_map = param<bool>("mppi_path_planning.cost_map", true);
+    mppi_param.max_cost_map_value = param<double>("mppi_path_planning.max_cost_map_value", 0.7);
+    mppi_param.min_cost_map_value = param<double>("mppi_path_planning.min_cost_map_value", 0.5);
     mppi_ = std::make_shared<MPPI::MPPIPathPlanner>(mppi_param, std::bind(&MPPIPathPlanning::f, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
     mppi_->set_velocity_limit({min_vel[0], min_vel[1], min_vel[2]}, {max_vel[0], max_vel[1], max_vel[2]});
     // publisher
@@ -224,22 +227,19 @@ public:
       std::cout << "diff_x:" << (x_tar_.value()-x_t_).tail(3).head(2).transpose() << std::endl;
       double target_dist = (x_tar_.value()-x_t_).tail(3).head(2).norm();
       double target_diff_angle = x_tar_.value().tail(1).norm()-x_t_.tail(1).norm();
+      double vel = std::hypot(x_t_(0),x_t_(1));
+      double angular = std::abs(x_t_(2));
       std::cout << "target_dist:" << target_dist << " target_diff_angle:" << target_diff_angle << std::endl;
       target_diff_angle = 0.0;
       // ゴール判定
       if (target_dist < GOAL_POS_RANGE) {
         if (target_diff_angle < GOAL_ANGLE_RANGE) {
-          RCLCPP_INFO(get_logger(), "goal !");
-          x_tar_ = std::nullopt;
-          cmd_vel_pub_->publish(stop());
-          // if (
-          //   approx_zero(vel, GOAL_MIN_VEL_RANGE) && approx_zero(angular, GOAL_MIN_ANGULAR_RANGE)) {
-          //   RCLCPP_INFO(get_logger(), "goal !");
-          //   opti_twists_ = std::nullopt;
-          //   opti_path_ = std::nullopt;
-          //   cmd_vel_pub_->publish(stop());
-          //   return true;
-          // }
+          if (
+            MPPI::approx_zero(vel, GOAL_MIN_VEL_RANGE) && MPPI::approx_zero(angular, GOAL_MIN_ANGULAR_RANGE)) {
+            RCLCPP_INFO(get_logger(), "goal !");
+            x_tar_ = std::nullopt;
+            cmd_vel_pub_->publish(stop());
+          }
         }
       }
       geometry_msgs::msg::Twist twist = make_twist(v_t);
