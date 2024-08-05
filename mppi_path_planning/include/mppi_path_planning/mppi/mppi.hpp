@@ -234,8 +234,10 @@ namespace MPPI
           epsilon_[k][t - 1] = noise();
           // ノイズ付き制御入力計算
           control_t v = u_[t - 1] + epsilon_[k][t - 1];
-          if (k <= (1.0 - param_.J) * param_.K)
-            v = epsilon_[k][t - 1]; // v = vec3_t::Zero(DIM_U, 1);
+          if (k == 0)
+            v = vec3_t::Zero(DIM_U, 1);
+          if (k < (1.0 - param_.J) * param_.K && k!=0 )
+            v = epsilon_[k][t - 1];
           // 状態計算
           x = f_(x, clamp(v), param_.dt);
           // ステージコスト計算

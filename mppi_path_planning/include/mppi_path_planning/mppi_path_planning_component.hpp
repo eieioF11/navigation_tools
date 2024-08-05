@@ -361,7 +361,7 @@ private:
     for (int i = 0; i < (int)path.size(); i++)
     {
       poses.at(i).header = header;
-      poses.at(i).pose = make_geometry_pose(path[i](3), path[i](4), 0.5, path[i](5));
+      poses.at(i).pose = make_geometry_pose(path[i](3), path[i](4), 0.1, path[i](5));
     }
     ppath.poses = poses;
     return ppath;
