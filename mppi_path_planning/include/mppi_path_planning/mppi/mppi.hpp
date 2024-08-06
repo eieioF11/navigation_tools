@@ -38,6 +38,9 @@ namespace MPPI
     param_t param_;
     double ganmma_;
     double inv_lambda_;
+    double eta_max_;
+
+    bool lambda_auto_tuning_;
 
     double calc_time_;
 
@@ -130,8 +133,22 @@ namespace MPPI
 #pragma omp parallel for reduction(+ : eta) schedule(dynamic)
       for (const auto &c : s)
         eta += std::exp(-inv_lambda_ * (c - rho));
-      // 重み計算
       double inv_eta = 1.0 / eta;
+      // 温度パラメータ自動調整
+      if (lambda_auto_tuning_)
+      {
+        double lambda = param_.lambda;
+        if (eta > eta_max_)
+          eta_max_ = eta; // 最大値更新
+        if (eta > eta_max_)
+          lambda *= 0.9;
+        else if (eta < eta_max_)
+          lambda *= 1.2;
+        inv_lambda_ = 1.0 / lambda;
+        log_info("eta:%f,eta_max:%f", eta ,eta_max_);
+        log_info("auto tuning lambda:%f", lambda);
+      }
+      // 重み計算
 #pragma omp parallel for schedule(dynamic)
       for (size_t i = 0; i < param_.K; ++i)
         weight_[i] = inv_eta * std::exp(-inv_lambda_ * (s[i] - rho));
@@ -176,10 +193,11 @@ namespace MPPI
      * @param param MPPIのパラメータ
      * @param f 運動学モデル
      */
-    MPPIPathPlanner(param_t param, std::function<state_t(state_t, control_t, double)> f)
+    MPPIPathPlanner(param_t param, std::function<state_t(state_t, control_t, double)> f,bool lambda_auto_tuning = true)
     {
       f_ = f;
       param_ = param;
+      lambda_auto_tuning_ = lambda_auto_tuning;
       ganmma_ = param_.lambda * (1.0 - param_.alpha);
       // メモリ確保
       epsilon_.resize(param_.K);
@@ -199,6 +217,7 @@ namespace MPPI
       // inverse calculation
       inv_sigma_ = param_.sigma.inverse();
       inv_lambda_ = 1.0 / param_.lambda;
+      eta_max_ = 0.0;
     }
     /**
      * @brief 制御入力の制限設定
